@@ -1,0 +1,29 @@
+# Examples and tests
+examples/
+tests/
+*.test.js
+*.spec.js
+
+# Documentation source
+docs/
+
+# Development files
+.gitignore
+.eslintrc*
+.prettierrc*
+tsconfig.json
+
+# CI/CD
+.github/
+.gitlab-ci.yml
+.travis.yml
+
+# Environment
+.env*
+
+# Logs
+*.log
+
+# IDE
+.vscode/
+.idea/

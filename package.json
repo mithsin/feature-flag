@@ -1,0 +1,30 @@
+{
+  "name": "@your-org/feature-flags-sdk",
+  "version": "1.0.0",
+  "description": "Feature flags SDK using OpenFeature with LaunchDarkly provider",
+  "main": "src/index.js",
+  "types": "src/index.d.ts",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "example:basic": "node examples/basic-usage.js",
+    "example:express": "node examples/express-app.js"
+  },
+  "keywords": [
+    "feature-flags",
+    "openfeature",
+    "launchdarkly",
+    "feature-toggles"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "@openfeature/server-sdk": "^1.13.0",
+    "@launchdarkly/openfeature-node-server": "^0.3.0"
+  },
+  "peerDependencies": {
+    "@openfeature/server-sdk": "^1.13.0"
+  },
+  "engines": {
+    "node": ">=16.0.0"
+  }
+}
