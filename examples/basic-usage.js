@@ -9,7 +9,7 @@ const {
   getFeatureFlagsStatus,
   shutdownFeatureFlags,
   openFeature
-} = require('../src/index');
+} = require('../dist/index');
 
 async function main() {
   console.log('=== Feature Flags SDK - Basic Usage Example ===\n');

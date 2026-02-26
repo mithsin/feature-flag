@@ -10,7 +10,7 @@ const {
   getFeatureFlagsStatus,
   shutdownFeatureFlags,
   openFeature
-} = require('../src/index');
+} = require('../dist/index');
 
 const app = express();
 app.use(express.json());
