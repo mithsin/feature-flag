@@ -8,7 +8,7 @@
     "dist/"
   ],
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1",
+    "test": "jest",
     "example:basic": "npm run build && node examples/basic-usage.js",
     "example:express": "npm run build && node examples/express-app.js",
     "build": "tsc --noEmit && esbuild src/index.ts --bundle --platform=node --outfile=dist/index.js --external:@openfeature/server-sdk --external:@launchdarkly/openfeature-node-server && tsc",
@@ -36,8 +36,11 @@
   },
   "devDependencies": {
     "@changesets/cli": "^2.27.0",
+    "@types/jest": "^30.0.0",
     "@types/node": "^25.3.2",
     "esbuild": "^0.24.0",
+    "jest": "^30.2.0",
+    "ts-jest": "^29.4.6",
     "typescript": "^5.0.0"
   },
   "publishConfig": {

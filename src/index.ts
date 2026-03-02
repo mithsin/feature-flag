@@ -70,6 +70,7 @@ export async function initializeFeatureFlags(config: FeatureFlagsConfig = {}): P
     sdkState.sdkKey = sdkKey;
 
     const ldClient = ldInit(sdkKey, config.options);
+    await ldClient.waitForInitialization();
     const provider = new LaunchDarklyProvider(ldClient);
 
     if (config.enableTelemetry !== false) {

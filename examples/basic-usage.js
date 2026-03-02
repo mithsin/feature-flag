@@ -19,7 +19,7 @@ async function main() {
   try {
     await initializeFeatureFlags({
       // SDK key from environment variable or hardcoded (not recommended for production)
-      sdkKey: process.env.LAUNCHDARKLY_SDK_KEY || 'your-sdk-key-here',
+      sdkKey: 'sdk-6ea49384-e02d-48ad-95be-2c4bbee64650',
       enableTelemetry: true,
       logger: (message) => {
         console.log('[TELEMETRY]', message);
@@ -68,43 +68,17 @@ async function main() {
   // Example 1: Boolean flag
   console.log('   Example 1: Boolean Flag');
   const showNewDashboard = await client.getBooleanValue(
-    'show-new-dashboard',
+    'dav-testing-flag',
     false, // default value if flag not found
     userContext
   );
-  console.log(`   - show-new-dashboard: ${showNewDashboard}`);
+  console.log(`dav,   - dav-testing-flag: ${showNewDashboard}`);
 
-  // Example 2: String flag
-  console.log('\n   Example 2: String Flag');
-  const uiTheme = await client.getStringValue(
-    'ui-theme',
-    'light',
-    userContext
-  );
-  console.log(`   - ui-theme: ${uiTheme}`);
-
-  // Example 3: Number flag
-  console.log('\n   Example 3: Number Flag');
-  const maxApiCalls = await client.getNumberValue(
-    'max-api-calls-per-minute',
-    100,
-    userContext
-  );
-  console.log(`   - max-api-calls-per-minute: ${maxApiCalls}`);
-
-  // Example 4: Object/JSON flag
-  console.log('\n   Example 4: Object/JSON Flag');
-  const featureConfig = await client.getObjectValue(
-    'feature-configuration',
-    { enabled: false, maxRetries: 3 },
-    userContext
-  );
-  console.log(`   - feature-configuration:`, JSON.stringify(featureConfig, null, 2));
-
+  
   // Example 5: Get detailed evaluation information
   console.log('\n   Example 5: Detailed Evaluation');
   const details = await client.getBooleanDetails(
-    'show-new-dashboard',
+    'dav-testing-flag',
     false,
     userContext
   );
@@ -115,17 +89,13 @@ async function main() {
 
   if (showNewDashboard) {
     console.log('   → Rendering NEW dashboard for user');
+
+    console.log('dav, showNewDashboard-1: ', showNewDashboard)
   } else {
     console.log('   → Rendering LEGACY dashboard for user');
-  }
+    console.log('dav, showNewDashboard-2: ', showNewDashboard)
 
-  if (uiTheme === 'dark') {
-    console.log('   → Applying dark theme styles');
-  } else {
-    console.log('   → Applying light theme styles');
   }
-
-  console.log(`   → Setting API rate limit to ${maxApiCalls} calls/minute`);
 
   // Step 6: Graceful shutdown
   console.log('\n6. Shutting down...');
