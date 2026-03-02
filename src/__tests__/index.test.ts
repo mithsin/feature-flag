@@ -6,6 +6,7 @@ import {
 } from '../index';
 import { OpenFeature } from '@openfeature/server-sdk';
 import { init as ldInit } from 'launchdarkly-node-server-sdk';
+import { TelemetryHook } from '../hooks/telemetry-hook';
 
 jest.mock('@openfeature/server-sdk', () => ({
   OpenFeature: {
@@ -23,18 +24,25 @@ jest.mock('@launchdarkly/openfeature-node-server', () => ({
   LaunchDarklyProvider: jest.fn().mockImplementation(() => ({})),
 }));
 
+jest.mock('../hooks/telemetry-hook', () => ({
+  TelemetryHook: jest.fn().mockImplementation(() => ({})),
+}));
+
 const mockOpenFeature = OpenFeature as unknown as {
   setProviderAndWait: jest.Mock;
   addHooks: jest.Mock;
   clearProviders: jest.Mock;
 };
 const mockLdInit = ldInit as jest.Mock;
+const MockTelemetryHook = TelemetryHook as jest.Mock;
 
 describe('Feature Flags SDK', () => {
   let mockLdClient: { waitForInitialization: jest.Mock; close: jest.Mock };
 
   beforeEach(() => {
     jest.clearAllMocks();
+    jest.spyOn(console, 'log').mockImplementation(() => {});
+    jest.spyOn(console, 'warn').mockImplementation(() => {});
     mockLdClient = {
       waitForInitialization: jest.fn().mockResolvedValue(undefined),
       close: jest.fn(),
@@ -45,10 +53,8 @@ describe('Feature Flags SDK', () => {
   });
 
   afterEach(async () => {
-    // Suppress the "not initialized" warning from cleanup calls
-    const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
     await shutdownFeatureFlags();
-    warnSpy.mockRestore();
+    jest.restoreAllMocks();
   });
 
   describe('isFeatureFlagsReady', () => {
@@ -133,18 +139,26 @@ describe('Feature Flags SDK', () => {
       expect(callOrder).toEqual(['waitForInitialization', 'setProviderAndWait']);
     });
 
-    it('adds telemetry hook by default', async () => {
+    it('adds telemetry hook by default using console.log as logger', async () => {
       await initializeFeatureFlags({ sdkKey: 'test-key' });
-      expect(mockOpenFeature.addHooks).toHaveBeenCalled();
+      expect(MockTelemetryHook).toHaveBeenCalledWith(
+        expect.objectContaining({ logger: console.log }),
+      );
+      expect(mockOpenFeature.addHooks).toHaveBeenCalledWith(expect.any(Object));
     });
 
-    it('adds telemetry hook when enableTelemetry is true', async () => {
-      await initializeFeatureFlags({ sdkKey: 'test-key', enableTelemetry: true });
+    it('passes custom logger to TelemetryHook', async () => {
+      const mockLogger = jest.fn();
+      await initializeFeatureFlags({ sdkKey: 'test-key', logger: mockLogger });
+      expect(MockTelemetryHook).toHaveBeenCalledWith(
+        expect.objectContaining({ logger: mockLogger }),
+      );
       expect(mockOpenFeature.addHooks).toHaveBeenCalled();
     });
 
     it('does not add telemetry hook when enableTelemetry is false', async () => {
       await initializeFeatureFlags({ sdkKey: 'test-key', enableTelemetry: false });
+      expect(MockTelemetryHook).not.toHaveBeenCalled();
       expect(mockOpenFeature.addHooks).not.toHaveBeenCalled();
     });
 
@@ -176,10 +190,8 @@ describe('Feature Flags SDK', () => {
 
   describe('shutdownFeatureFlags', () => {
     it('warns and returns early when not initialized', async () => {
-      const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
       await shutdownFeatureFlags();
-      expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('not initialized'));
-      warnSpy.mockRestore();
+      expect(console.warn).toHaveBeenCalledWith(expect.stringContaining('not initialized'));
     });
 
     it('calls clearProviders on OpenFeature', async () => {

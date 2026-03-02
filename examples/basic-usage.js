@@ -19,7 +19,7 @@ async function main() {
   try {
     await initializeFeatureFlags({
       // SDK key from environment variable or hardcoded (not recommended for production)
-      sdkKey: 'sdk-6ea49384-e02d-48ad-95be-2c4bbee64650',
+      sdkKey: 'mock-sdkkey',
       enableTelemetry: true,
       logger: (message) => {
         console.log('[TELEMETRY]', message);
