@@ -16,8 +16,6 @@ export interface FeatureFlagsConfig {
   options?: Record<string, unknown>;
   /** Enable telemetry logging (default: true) */
   enableTelemetry?: boolean;
-  /** Custom logger function */
-  logger?: (message: string) => void;
   /** Options passed directly to TelemetryHook */
   telemetryOptions?: {
     logTimings?: boolean;
@@ -74,7 +72,6 @@ async function _initializeClient(config: FeatureFlagsConfig): Promise<void> {
 
     if (config.enableTelemetry !== false) {
       const telemetryHook = new TelemetryHook({
-        logger: config.logger || console.log,
         ...config.telemetryOptions,
       });
       OpenFeature.addHooks(telemetryHook);
@@ -95,9 +92,6 @@ async function _initializeClient(config: FeatureFlagsConfig): Promise<void> {
 
     sdkInstances.set(client, state);
 
-    if (config.logger) {
-      config.logger(`Feature flags SDK initialized successfully in ${state.initializationTime}ms`);
-    }
   } catch (error) {
     state.initializationError = error instanceof Error ? error : new Error(String(error));
     state.isInitialized = false;

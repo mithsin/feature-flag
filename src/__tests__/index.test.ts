@@ -188,32 +188,16 @@ describe('Feature Flags SDK', () => {
       );
     });
 
-    it('adds telemetry hook using console.log as default logger', async () => {
+    it('adds telemetry hook when enableTelemetry is not false', async () => {
       await initializeGlobalClient({ sdkKey: 'test-key' });
-      expect(MockTelemetryHook).toHaveBeenCalledWith(
-        expect.objectContaining({ logger: console.log }),
-      );
+      expect(MockTelemetryHook).toHaveBeenCalled();
       expect(mockOpenFeature.addHooks).toHaveBeenCalledWith(expect.any(Object));
-    });
-
-    it('passes custom logger to TelemetryHook', async () => {
-      const mockLogger = jest.fn();
-      await initializeGlobalClient({ sdkKey: 'test-key', logger: mockLogger });
-      expect(MockTelemetryHook).toHaveBeenCalledWith(
-        expect.objectContaining({ logger: mockLogger }),
-      );
     });
 
     it('does not add telemetry hook when enableTelemetry is false', async () => {
       await initializeGlobalClient({ sdkKey: 'test-key', enableTelemetry: false });
       expect(MockTelemetryHook).not.toHaveBeenCalled();
       expect(mockOpenFeature.addHooks).not.toHaveBeenCalled();
-    });
-
-    it('calls custom logger with success message', async () => {
-      const mockLogger = jest.fn();
-      await initializeGlobalClient({ sdkKey: 'test-key', logger: mockLogger });
-      expect(mockLogger).toHaveBeenCalledWith(expect.stringContaining('initialized successfully'));
     });
 
     it('wraps and rethrows errors', async () => {
