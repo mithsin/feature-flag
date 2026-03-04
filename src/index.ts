@@ -181,7 +181,7 @@ export const openFeature = OpenFeature;
 function requireClient(client: FeatureFlagsClient = 'app') {
   const instance = sdkInstances.get(client);
   if (!instance?.isReady) {
-    throw new Error('Feature flags SDK is not initialized. Call initializeFeatureFlags() first.');
+    throw new Error('Feature flags SDK is not initialized. Call initializeAppClient() first.');
   }
   return client === 'global' ? OpenFeature.getClient() : OpenFeature.getClient(client);
 }
