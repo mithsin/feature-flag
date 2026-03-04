@@ -5,6 +5,8 @@ import { init as ldInit } from 'launchdarkly-node-server-sdk';
 import type { LDClient } from 'launchdarkly-node-server-sdk';
 import { TelemetryHook } from './hooks/telemetry-hook';
 
+export type FeatureFlagsClient = 'global' | 'app';
+
 export interface FeatureFlagsConfig {
   /** LaunchDarkly SDK key. Can also be set via LAUNCHDARKLY_SDK_KEY env variable */
   sdkKey?: string;
@@ -41,22 +43,26 @@ interface SdkState {
   sdkKey: string | null;
 }
 
-let sdkState: SdkState = {
-  isInitialized: false,
-  isReady: false,
-  ldClient: null,
-  provider: null,
-  initializationError: null,
-  initializationTime: null,
-  sdkKey: null,
-};
+const sdkInstances = new Map<FeatureFlagsClient, SdkState>();
 
-export async function initializeFeatureFlags(config: FeatureFlagsConfig = {}): Promise<void> {
-  if (sdkState.isInitialized) {
-    throw new Error('Feature flags SDK is already initialized');
+async function _initializeClient(
+  config: FeatureFlagsConfig,
+  client: FeatureFlagsClient,
+): Promise<void> {
+  if (sdkInstances.get(client)?.isInitialized) {
+    throw new Error(`Feature flags '${client}' client is already initialized`);
   }
 
   const startTime = Date.now();
+  const state: SdkState = {
+    isInitialized: false,
+    isReady: false,
+    ldClient: null,
+    provider: null,
+    initializationError: null,
+    initializationTime: null,
+    sdkKey: null,
+  };
 
   try {
     const sdkKey = config.sdkKey || process.env['LAUNCHDARKLY_SDK_KEY'];
@@ -67,7 +73,7 @@ export async function initializeFeatureFlags(config: FeatureFlagsConfig = {}): P
       );
     }
 
-    sdkState.sdkKey = sdkKey;
+    state.sdkKey = sdkKey;
 
     const ldClient = ldInit(sdkKey, config.options);
     await ldClient.waitForInitialization();
@@ -81,70 +87,95 @@ export async function initializeFeatureFlags(config: FeatureFlagsConfig = {}): P
       OpenFeature.addHooks(telemetryHook);
     }
 
-    await OpenFeature.setProviderAndWait(provider as unknown as Provider);
+    if (client === 'global') {
+      await OpenFeature.setProviderAndWait(provider as unknown as Provider);
+    } else {
+      await OpenFeature.setProviderAndWait(client, provider as unknown as Provider);
+    }
 
-    sdkState.ldClient = ldClient;
-    sdkState.provider = provider as unknown as Provider;
-    sdkState.isInitialized = true;
-    sdkState.isReady = true;
-    sdkState.initializationTime = Date.now() - startTime;
-    sdkState.initializationError = null;
+    state.ldClient = ldClient;
+    state.provider = provider as unknown as Provider;
+    state.isInitialized = true;
+    state.isReady = true;
+    state.initializationTime = Date.now() - startTime;
+    state.initializationError = null;
+
+    sdkInstances.set(client, state);
 
     if (config.logger) {
-      config.logger(`Feature flags SDK initialized successfully in ${sdkState.initializationTime}ms`);
+      config.logger(`Feature flags SDK initialized successfully in ${state.initializationTime}ms`);
     }
   } catch (error) {
-    sdkState.initializationError = error instanceof Error ? error : new Error(String(error));
-    sdkState.isInitialized = false;
-    sdkState.isReady = false;
+    state.initializationError = error instanceof Error ? error : new Error(String(error));
+    state.isInitialized = false;
+    state.isReady = false;
+    sdkInstances.set(client, state);
     const message = error instanceof Error ? error.message : String(error);
     throw new Error(`Failed to initialize feature flags SDK: ${message}`);
   }
 }
 
-export function isFeatureFlagsReady(): boolean {
-  return sdkState.isReady;
+export async function initializeGlobalClient(config: FeatureFlagsConfig = {}): Promise<void> {
+  return _initializeClient(config, 'global');
 }
 
-export function getFeatureFlagsStatus(): FeatureFlagsStatus {
+export async function initializeAppClient(config: FeatureFlagsConfig = {}): Promise<void> {
+  return _initializeClient(config, 'app');
+}
+
+/** @deprecated Use initializeGlobalClient instead */
+export async function initializeFeatureFlags(config: FeatureFlagsConfig = {}): Promise<void> {
+  return initializeGlobalClient(config);
+}
+
+export function isFeatureFlagsReady(client: FeatureFlagsClient = 'global'): boolean {
+  return sdkInstances.get(client)?.isReady ?? false;
+}
+
+export function getFeatureFlagsStatus(client: FeatureFlagsClient = 'global'): FeatureFlagsStatus {
+  const state = sdkInstances.get(client);
+  if (!state) {
+    return {
+      isInitialized: false,
+      isReady: false,
+      initializationTime: null,
+      hasError: false,
+      error: null,
+      provider: null,
+      timestamp: new Date().toISOString(),
+    };
+  }
   return {
-    isInitialized: sdkState.isInitialized,
-    isReady: sdkState.isReady,
-    initializationTime: sdkState.initializationTime,
-    hasError: sdkState.initializationError !== null,
-    error: sdkState.initializationError
-      ? { message: sdkState.initializationError.message, name: sdkState.initializationError.name }
+    isInitialized: state.isInitialized,
+    isReady: state.isReady,
+    initializationTime: state.initializationTime,
+    hasError: state.initializationError !== null,
+    error: state.initializationError
+      ? { message: state.initializationError.message, name: state.initializationError.name }
       : null,
-    provider: sdkState.provider
-      ? { name: 'LaunchDarkly', status: 'READY' }
-      : null,
+    provider: state.provider ? { name: 'LaunchDarkly', status: 'READY' } : null,
     timestamp: new Date().toISOString(),
   };
 }
 
-export async function shutdownFeatureFlags(): Promise<void> {
-  if (!sdkState.isInitialized) {
-    console.warn('Feature flags SDK is not initialized, nothing to shut down');
+export async function shutdownFeatureFlags(client: FeatureFlagsClient = 'global'): Promise<void> {
+  const state = sdkInstances.get(client);
+  if (!state?.isInitialized) {
+    console.warn(`Feature flags '${client}' client is not initialized, nothing to shut down`);
     return;
   }
 
   try {
-    await OpenFeature.clearProviders();
-
-    if (sdkState.ldClient) {
-      sdkState.ldClient.close();
+    // clearProviders() clears all OpenFeature domains — only call it when shutting down global
+    if (client === 'global') {
+      await OpenFeature.clearProviders();
     }
 
-    sdkState = {
-      isInitialized: false,
-      isReady: false,
-      ldClient: null,
-      provider: null,
-      initializationError: null,
-      initializationTime: null,
-      sdkKey: null,
-    };
+    if (state.ldClient) {
+      state.ldClient.close();
+    }
 
+    sdkInstances.delete(client);
     console.log('Feature flags SDK shut down successfully');
   } catch (error) {
     console.error('Error during feature flags shutdown:', error);
@@ -154,73 +185,82 @@ export async function shutdownFeatureFlags(): Promise<void> {
 
 export const openFeature = OpenFeature;
 
-function requireClient() {
-  if (!sdkState.isReady) {
+function requireClient(client: FeatureFlagsClient = 'global') {
+  const instance = sdkInstances.get(client);
+  if (!instance?.isReady) {
     throw new Error('Feature flags SDK is not initialized. Call initializeFeatureFlags() first.');
   }
-  return OpenFeature.getClient();
+  return client === 'global' ? OpenFeature.getClient() : OpenFeature.getClient(client);
 }
 
 export async function getBooleanValue(
   flagKey: string,
   defaultValue: boolean,
   context?: EvaluationContext,
+  client?: FeatureFlagsClient,
 ): Promise<boolean> {
-  return requireClient().getBooleanValue(flagKey, defaultValue, context);
+  return requireClient(client).getBooleanValue(flagKey, defaultValue, context);
 }
 
 export async function getStringValue(
   flagKey: string,
   defaultValue: string,
   context?: EvaluationContext,
+  client?: FeatureFlagsClient,
 ): Promise<string> {
-  return requireClient().getStringValue(flagKey, defaultValue, context);
+  return requireClient(client).getStringValue(flagKey, defaultValue, context);
 }
 
 export async function getNumberValue(
   flagKey: string,
   defaultValue: number,
   context?: EvaluationContext,
+  client?: FeatureFlagsClient,
 ): Promise<number> {
-  return requireClient().getNumberValue(flagKey, defaultValue, context);
+  return requireClient(client).getNumberValue(flagKey, defaultValue, context);
 }
 
 export async function getObjectValue<T extends JsonValue = JsonValue>(
   flagKey: string,
   defaultValue: T,
   context?: EvaluationContext,
+  client?: FeatureFlagsClient,
 ): Promise<T> {
-  return requireClient().getObjectValue(flagKey, defaultValue, context) as Promise<T>;
+  return requireClient(client).getObjectValue(flagKey, defaultValue, context) as Promise<T>;
 }
 
 export async function getBooleanDetails(
   flagKey: string,
   defaultValue: boolean,
   context?: EvaluationContext,
+  client?: FeatureFlagsClient,
 ): Promise<EvaluationDetails<boolean>> {
-  return requireClient().getBooleanDetails(flagKey, defaultValue, context);
+  return requireClient(client).getBooleanDetails(flagKey, defaultValue, context);
 }
 
 export async function getStringDetails(
   flagKey: string,
   defaultValue: string,
   context?: EvaluationContext,
+  client?: FeatureFlagsClient,
 ): Promise<EvaluationDetails<string>> {
-  return requireClient().getStringDetails(flagKey, defaultValue, context);
+  return requireClient(client).getStringDetails(flagKey, defaultValue, context);
 }
 
 export async function getNumberDetails(
   flagKey: string,
   defaultValue: number,
   context?: EvaluationContext,
+  client?: FeatureFlagsClient,
 ): Promise<EvaluationDetails<number>> {
-  return requireClient().getNumberDetails(flagKey, defaultValue, context);
+  return requireClient(client).getNumberDetails(flagKey, defaultValue, context);
 }
 
 export async function getObjectDetails<T extends JsonValue = JsonValue>(
   flagKey: string,
   defaultValue: T,
   context?: EvaluationContext,
+  client?: FeatureFlagsClient,
 ): Promise<EvaluationDetails<T>> {
-  return requireClient().getObjectDetails(flagKey, defaultValue, context) as Promise<EvaluationDetails<T>>;
+  return requireClient(client).getObjectDetails(flagKey, defaultValue, context) as Promise<EvaluationDetails<T>>;
 }
