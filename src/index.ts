@@ -1,5 +1,5 @@
 import { OpenFeature } from '@openfeature/server-sdk';
-import type { Provider } from '@openfeature/server-sdk';
+import type { Provider, EvaluationContext, EvaluationDetails, JsonValue } from '@openfeature/server-sdk';
 import { LaunchDarklyProvider } from '@launchdarkly/openfeature-node-server';
 import { init as ldInit } from 'launchdarkly-node-server-sdk';
 import type { LDClient } from 'launchdarkly-node-server-sdk';
@@ -153,3 +153,74 @@ export async function shutdownFeatureFlags(): Promise<void> {
 }
 
 export const openFeature = OpenFeature;
+
+function requireClient() {
+  if (!sdkState.isReady) {
+    throw new Error('Feature flags SDK is not initialized. Call initializeFeatureFlags() first.');
+  }
+  return OpenFeature.getClient();
+}
+
+export async function getBooleanValue(
+  flagKey: string,
+  defaultValue: boolean,
+  context?: EvaluationContext,
+): Promise<boolean> {
+  return requireClient().getBooleanValue(flagKey, defaultValue, context);
+}
+
+export async function getStringValue(
+  flagKey: string,
+  defaultValue: string,
+  context?: EvaluationContext,
+): Promise<string> {
+  return requireClient().getStringValue(flagKey, defaultValue, context);
+}
+
+export async function getNumberValue(
+  flagKey: string,
+  defaultValue: number,
+  context?: EvaluationContext,
+): Promise<number> {
+  return requireClient().getNumberValue(flagKey, defaultValue, context);
+}
+
+export async function getObjectValue<T extends JsonValue = JsonValue>(
+  flagKey: string,
+  defaultValue: T,
+  context?: EvaluationContext,
+): Promise<T> {
+  return requireClient().getObjectValue(flagKey, defaultValue, context) as Promise<T>;
+}
+
+export async function getBooleanDetails(
+  flagKey: string,
+  defaultValue: boolean,
+  context?: EvaluationContext,
+): Promise<EvaluationDetails<boolean>> {
+  return requireClient().getBooleanDetails(flagKey, defaultValue, context);
+}
+
+export async function getStringDetails(
+  flagKey: string,
+  defaultValue: string,
+  context?: EvaluationContext,
+): Promise<EvaluationDetails<string>> {
+  return requireClient().getStringDetails(flagKey, defaultValue, context);
+}
+
+export async function getNumberDetails(
+  flagKey: string,
+  defaultValue: number,
+  context?: EvaluationContext,
+): Promise<EvaluationDetails<number>> {
+  return requireClient().getNumberDetails(flagKey, defaultValue, context);
+}
+
+export async function getObjectDetails<T extends JsonValue = JsonValue>(
+  flagKey: string,
+  defaultValue: T,
+  context?: EvaluationContext,
+): Promise<EvaluationDetails<T>> {
+  return requireClient().getObjectDetails(flagKey, defaultValue, context) as Promise<EvaluationDetails<T>>;
+}

@@ -3,6 +3,14 @@ import {
   isFeatureFlagsReady,
   getFeatureFlagsStatus,
   shutdownFeatureFlags,
+  getBooleanValue,
+  getStringValue,
+  getNumberValue,
+  getObjectValue,
+  getBooleanDetails,
+  getStringDetails,
+  getNumberDetails,
+  getObjectDetails,
 } from '../index';
 import { OpenFeature } from '@openfeature/server-sdk';
 import { init as ldInit } from 'launchdarkly-node-server-sdk';
@@ -13,6 +21,7 @@ jest.mock('@openfeature/server-sdk', () => ({
     setProviderAndWait: jest.fn().mockResolvedValue(undefined),
     addHooks: jest.fn(),
     clearProviders: jest.fn().mockResolvedValue(undefined),
+    getClient: jest.fn(),
   },
 }));
 
@@ -32,12 +41,23 @@ const mockOpenFeature = OpenFeature as unknown as {
   setProviderAndWait: jest.Mock;
   addHooks: jest.Mock;
   clearProviders: jest.Mock;
+  getClient: jest.Mock;
 };
 const mockLdInit = ldInit as jest.Mock;
 const MockTelemetryHook = TelemetryHook as jest.Mock;
 
 describe('Feature Flags SDK', () => {
   let mockLdClient: { waitForInitialization: jest.Mock; close: jest.Mock };
+  let mockClient: {
+    getBooleanValue: jest.Mock;
+    getStringValue: jest.Mock;
+    getNumberValue: jest.Mock;
+    getObjectValue: jest.Mock;
+    getBooleanDetails: jest.Mock;
+    getStringDetails: jest.Mock;
+    getNumberDetails: jest.Mock;
+    getObjectDetails: jest.Mock;
+  };
 
   beforeEach(() => {
     jest.clearAllMocks();
@@ -47,9 +67,20 @@ describe('Feature Flags SDK', () => {
       waitForInitialization: jest.fn().mockResolvedValue(undefined),
       close: jest.fn(),
     };
+    mockClient = {
+      getBooleanValue: jest.fn().mockResolvedValue(false),
+      getStringValue: jest.fn().mockResolvedValue(''),
+      getNumberValue: jest.fn().mockResolvedValue(0),
+      getObjectValue: jest.fn().mockResolvedValue({}),
+      getBooleanDetails: jest.fn().mockResolvedValue({ value: false, flagKey: 'test', flagMetadata: {} }),
+      getStringDetails: jest.fn().mockResolvedValue({ value: '', flagKey: 'test', flagMetadata: {} }),
+      getNumberDetails: jest.fn().mockResolvedValue({ value: 0, flagKey: 'test', flagMetadata: {} }),
+      getObjectDetails: jest.fn().mockResolvedValue({ value: {}, flagKey: 'test', flagMetadata: {} }),
+    };
     mockLdInit.mockReturnValue(mockLdClient);
     mockOpenFeature.setProviderAndWait.mockResolvedValue(undefined);
     mockOpenFeature.clearProviders.mockResolvedValue(undefined);
+    mockOpenFeature.getClient.mockReturnValue(mockClient);
   });
 
   afterEach(async () => {
@@ -214,6 +245,94 @@ describe('Feature Flags SDK', () => {
       expect(status.isInitialized).toBe(false);
       expect(status.isReady).toBe(false);
       expect(status.provider).toBeNull();
+    });
+  });
+
+  describe('flag evaluation helpers', () => {
+    it('throws when SDK is not initialized', async () => {
+      await expect(getBooleanValue('flag', false)).rejects.toThrow('not initialized');
+      await expect(getStringValue('flag', '')).rejects.toThrow('not initialized');
+      await expect(getNumberValue('flag', 0)).rejects.toThrow('not initialized');
+      await expect(getObjectValue('flag', {})).rejects.toThrow('not initialized');
+      await expect(getBooleanDetails('flag', false)).rejects.toThrow('not initialized');
+      await expect(getStringDetails('flag', '')).rejects.toThrow('not initialized');
+      await expect(getNumberDetails('flag', 0)).rejects.toThrow('not initialized');
+      await expect(getObjectDetails('flag', {})).rejects.toThrow('not initialized');
+    });
+
+    describe('after initialization', () => {
+      const ctx = { targetingKey: 'user-1' };
+
+      beforeEach(async () => {
+        await initializeFeatureFlags({ sdkKey: 'test-key' });
+      });
+
+      it('getBooleanValue calls client and returns value', async () => {
+        mockClient.getBooleanValue.mockResolvedValue(true);
+        const result = await getBooleanValue('my-flag', false, ctx);
+        expect(mockClient.getBooleanValue).toHaveBeenCalledWith('my-flag', false, ctx);
+        expect(result).toBe(true);
+      });
+
+      it('getStringValue calls client and returns value', async () => {
+        mockClient.getStringValue.mockResolvedValue('dark');
+        const result = await getStringValue('theme', 'light', ctx);
+        expect(mockClient.getStringValue).toHaveBeenCalledWith('theme', 'light', ctx);
+        expect(result).toBe('dark');
+      });
+
+      it('getNumberValue calls client and returns value', async () => {
+        mockClient.getNumberValue.mockResolvedValue(42);
+        const result = await getNumberValue('limit', 0, ctx);
+        expect(mockClient.getNumberValue).toHaveBeenCalledWith('limit', 0, ctx);
+        expect(result).toBe(42);
+      });
+
+      it('getObjectValue calls client and returns value', async () => {
+        const config = { timeout: 5000 };
+        mockClient.getObjectValue.mockResolvedValue(config);
+        const result = await getObjectValue('config', {}, ctx);
+        expect(mockClient.getObjectValue).toHaveBeenCalledWith('config', {}, ctx);
+        expect(result).toEqual(config);
+      });
+
+      it('getBooleanDetails calls client and returns details', async () => {
+        const details = { value: true, variant: '1', reason: 'TARGETING_MATCH', flagKey: 'my-flag', flagMetadata: {} };
+        mockClient.getBooleanDetails.mockResolvedValue(details);
+        const result = await getBooleanDetails('my-flag', false, ctx);
+        expect(mockClient.getBooleanDetails).toHaveBeenCalledWith('my-flag', false, ctx);
+        expect(result).toEqual(details);
+      });
+
+      it('getStringDetails calls client and returns details', async () => {
+        const details = { value: 'v2', variant: '1', reason: 'FALLTHROUGH', flagKey: 'version', flagMetadata: {} };
+        mockClient.getStringDetails.mockResolvedValue(details);
+        const result = await getStringDetails('version', 'v1', ctx);
+        expect(mockClient.getStringDetails).toHaveBeenCalledWith('version', 'v1', ctx);
+        expect(result).toEqual(details);
+      });
+
+      it('getNumberDetails calls client and returns details', async () => {
+        const details = { value: 10, variant: '0', reason: 'FALLTHROUGH', flagKey: 'limit', flagMetadata: {} };
+        mockClient.getNumberDetails.mockResolvedValue(details);
+        const result = await getNumberDetails('limit', 0, ctx);
+        expect(mockClient.getNumberDetails).toHaveBeenCalledWith('limit', 0, ctx);
+        expect(result).toEqual(details);
+      });
+
+      it('getObjectDetails calls client and returns details', async () => {
+        const details = { value: { x: 1 }, variant: '0', reason: 'FALLTHROUGH', flagKey: 'cfg', flagMetadata: {} };
+        mockClient.getObjectDetails.mockResolvedValue(details);
+        const result = await getObjectDetails('cfg', {}, ctx);
+        expect(mockClient.getObjectDetails).toHaveBeenCalledWith('cfg', {}, ctx);
+        expect(result).toEqual(details);
+      });
+
+      it('works without a context argument', async () => {
+        mockClient.getBooleanValue.mockResolvedValue(false);
+        await getBooleanValue('flag', false);
+        expect(mockClient.getBooleanValue).toHaveBeenCalledWith('flag', false, undefined);
+      });
     });
   });
 });
