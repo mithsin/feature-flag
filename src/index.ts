@@ -6,14 +6,16 @@ import type { LDClient } from 'launchdarkly-node-server-sdk';
 import { TelemetryHook } from './hooks/telemetry-hook';
 
 export interface FeatureFlagsConfig {
-  /** LaunchDarkly SDK key. Can also be set via LAUNCHDARKLY_SDK_KEY env variable */
-  sdkKey?: string;
+  /** LaunchDarkly SDK key */
+  sdkKey: string;
+  /** Use streaming connection (default: true). Set to false to use polling instead */
+  isStreaming?: boolean;
+  /** Polling interval in seconds when stream is false (default: 30) */
+  pollingFrequencySeconds?: number;
   /** Additional LaunchDarkly provider options */
   options?: Record<string, unknown>;
   /** Enable telemetry logging (default: true) */
   enableTelemetry?: boolean;
-  /** Custom logger function */
-  logger?: (message: string) => void;
   /** Options passed directly to TelemetryHook */
   telemetryOptions?: {
     logTimings?: boolean;
@@ -39,6 +41,7 @@ interface SdkState {
   initializationError: Error | null;
   initializationTime: number | null;
   sdkKey: string | null;
+  isStreaming: boolean;
 }
 
 let sdkState: SdkState = {
@@ -49,9 +52,10 @@ let sdkState: SdkState = {
   initializationError: null,
   initializationTime: null,
   sdkKey: null,
+  isStreaming: false,
 };
 
-export async function initializeFeatureFlags(config: FeatureFlagsConfig = {}): Promise<void> {
+export async function initializeFeatureFlags(config: FeatureFlagsConfig): Promise<void> {
   if (sdkState.isInitialized) {
     throw new Error('Feature flags SDK is already initialized');
   }
@@ -59,23 +63,20 @@ export async function initializeFeatureFlags(config: FeatureFlagsConfig = {}): P
   const startTime = Date.now();
 
   try {
-    const sdkKey = config.sdkKey || process.env['LAUNCHDARKLY_SDK_KEY'];
+    sdkState.sdkKey = config.sdkKey;
+    sdkState.isStreaming = config.isStreaming ?? true;
 
-    if (!sdkKey) {
-      throw new Error(
-        'LaunchDarkly SDK key is required. Provide it via config.sdkKey or LAUNCHDARKLY_SDK_KEY environment variable',
-      );
-    }
-
-    sdkState.sdkKey = sdkKey;
-
-    const ldClient = ldInit(sdkKey, config.options);
+    const ldOptions = {
+      ...config.options,
+      ...(config.isStreaming !== undefined && { stream: config.isStreaming }),
+      ...(config.pollingFrequencySeconds !== undefined && { pollInterval: config.pollingFrequencySeconds }),
+    };
+    const ldClient = ldInit(config.sdkKey, ldOptions);
     await ldClient.waitForInitialization();
     const provider = new LaunchDarklyProvider(ldClient);
 
     if (config.enableTelemetry !== false) {
       const telemetryHook = new TelemetryHook({
-        logger: config.logger || console.log,
         ...config.telemetryOptions,
       });
       OpenFeature.addHooks(telemetryHook);
@@ -89,10 +90,6 @@ export async function initializeFeatureFlags(config: FeatureFlagsConfig = {}): P
     sdkState.isReady = true;
     sdkState.initializationTime = Date.now() - startTime;
     sdkState.initializationError = null;
-
-    if (config.logger) {
-      config.logger(`Feature flags SDK initialized successfully in ${sdkState.initializationTime}ms`);
-    }
   } catch (error) {
     sdkState.initializationError = error instanceof Error ? error : new Error(String(error));
     sdkState.isInitialized = false;
@@ -143,6 +140,7 @@ export async function shutdownFeatureFlags(): Promise<void> {
       initializationError: null,
       initializationTime: null,
       sdkKey: null,
+      isStreaming: false,
     };
 
     console.log('Feature flags SDK shut down successfully');

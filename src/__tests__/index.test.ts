@@ -132,19 +132,6 @@ describe('Feature Flags SDK', () => {
   });
 
   describe('initializeFeatureFlags', () => {
-    it('throws if SDK key is not provided', async () => {
-      await expect(initializeFeatureFlags({})).rejects.toThrow(
-        'LaunchDarkly SDK key is required',
-      );
-    });
-
-    it('uses LAUNCHDARKLY_SDK_KEY env variable when no sdkKey in config', async () => {
-      process.env['LAUNCHDARKLY_SDK_KEY'] = 'env-sdk-key';
-      await initializeFeatureFlags({});
-      expect(mockLdInit).toHaveBeenCalledWith('env-sdk-key', undefined);
-      delete process.env['LAUNCHDARKLY_SDK_KEY'];
-    });
-
     it('throws if called when already initialized', async () => {
       await initializeFeatureFlags({ sdkKey: 'test-key' });
       await expect(initializeFeatureFlags({ sdkKey: 'test-key' })).rejects.toThrow(
@@ -155,6 +142,34 @@ describe('Feature Flags SDK', () => {
     it('calls ldInit with the provided SDK key and options', async () => {
       await initializeFeatureFlags({ sdkKey: 'my-key', options: { timeout: 3000 } });
       expect(mockLdInit).toHaveBeenCalledWith('my-key', { timeout: 3000 });
+    });
+
+    it('passes stream: false to ldInit when isStreaming is false', async () => {
+      await initializeFeatureFlags({ sdkKey: 'test-key', isStreaming: false });
+      expect(mockLdInit).toHaveBeenCalledWith('test-key', expect.objectContaining({ stream: false }));
+    });
+
+    it('passes pollInterval to ldInit when pollingFrequencySeconds is provided', async () => {
+      await initializeFeatureFlags({ sdkKey: 'test-key', isStreaming: false, pollingFrequencySeconds: 60 });
+      expect(mockLdInit).toHaveBeenCalledWith(
+        'test-key',
+        expect.objectContaining({ stream: false, pollInterval: 60 }),
+      );
+    });
+
+    it('merges isStreaming/pollingFrequencySeconds with other options', async () => {
+      await initializeFeatureFlags({ sdkKey: 'test-key', isStreaming: false, pollingFrequencySeconds: 30, options: { timeout: 5000 } });
+      expect(mockLdInit).toHaveBeenCalledWith(
+        'test-key',
+        expect.objectContaining({ timeout: 5000, stream: false, pollInterval: 30 }),
+      );
+    });
+
+    it('does not pass stream/pollInterval when not set', async () => {
+      await initializeFeatureFlags({ sdkKey: 'test-key' });
+      const ldOptions = mockLdInit.mock.calls[0][1];
+      expect(ldOptions).not.toHaveProperty('stream');
+      expect(ldOptions).not.toHaveProperty('pollInterval');
     });
 
     it('calls waitForInitialization before setProviderAndWait', async () => {
@@ -170,35 +185,16 @@ describe('Feature Flags SDK', () => {
       expect(callOrder).toEqual(['waitForInitialization', 'setProviderAndWait']);
     });
 
-    it('adds telemetry hook by default using console.log as logger', async () => {
+    it('adds telemetry hook by default', async () => {
       await initializeFeatureFlags({ sdkKey: 'test-key' });
-      expect(MockTelemetryHook).toHaveBeenCalledWith(
-        expect.objectContaining({ logger: console.log }),
-      );
+      expect(MockTelemetryHook).toHaveBeenCalled();
       expect(mockOpenFeature.addHooks).toHaveBeenCalledWith(expect.any(Object));
-    });
-
-    it('passes custom logger to TelemetryHook', async () => {
-      const mockLogger = jest.fn();
-      await initializeFeatureFlags({ sdkKey: 'test-key', logger: mockLogger });
-      expect(MockTelemetryHook).toHaveBeenCalledWith(
-        expect.objectContaining({ logger: mockLogger }),
-      );
-      expect(mockOpenFeature.addHooks).toHaveBeenCalled();
     });
 
     it('does not add telemetry hook when enableTelemetry is false', async () => {
       await initializeFeatureFlags({ sdkKey: 'test-key', enableTelemetry: false });
       expect(MockTelemetryHook).not.toHaveBeenCalled();
       expect(mockOpenFeature.addHooks).not.toHaveBeenCalled();
-    });
-
-    it('calls custom logger with success message on init', async () => {
-      const mockLogger = jest.fn();
-      await initializeFeatureFlags({ sdkKey: 'test-key', logger: mockLogger });
-      expect(mockLogger).toHaveBeenCalledWith(
-        expect.stringContaining('initialized successfully'),
-      );
     });
 
     it('wraps and rethrows errors with context', async () => {
