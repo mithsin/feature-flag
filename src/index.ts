@@ -8,8 +8,8 @@ import { TelemetryHook } from './hooks/telemetry-hook';
 export type FeatureFlagsClient = 'global' | 'app';
 
 export interface FeatureFlagsConfig {
-  /** LaunchDarkly SDK key. Can also be set via LAUNCHDARKLY_SDK_KEY env variable */
-  sdkKey?: string;
+  /** LaunchDarkly SDK key */
+  sdkKey: string;
   /** Additional LaunchDarkly provider options */
   options?: Record<string, unknown>;
   /** Enable telemetry logging (default: true) */
@@ -65,14 +65,7 @@ async function _initializeClient(
   };
 
   try {
-    const sdkKey = config.sdkKey || process.env['LAUNCHDARKLY_SDK_KEY'];
-
-    if (!sdkKey) {
-      throw new Error(
-        'LaunchDarkly SDK key is required. Provide it via config.sdkKey or LAUNCHDARKLY_SDK_KEY environment variable',
-      );
-    }
-
+    const { sdkKey } = config;
     state.sdkKey = sdkKey;
 
     const ldClient = ldInit(sdkKey, config.options);
@@ -115,16 +108,16 @@ async function _initializeClient(
   }
 }
 
-export async function initializeGlobalClient(config: FeatureFlagsConfig = {}): Promise<void> {
+export async function initializeGlobalClient(config: FeatureFlagsConfig): Promise<void> {
   return _initializeClient(config, 'global');
 }
 
-export async function initializeAppClient(config: FeatureFlagsConfig = {}): Promise<void> {
+export async function initializeAppClient(config: FeatureFlagsConfig): Promise<void> {
   return _initializeClient(config, 'app');
 }
 
 /** @deprecated Use initializeGlobalClient instead */
-export async function initializeFeatureFlags(config: FeatureFlagsConfig = {}): Promise<void> {
+export async function initializeFeatureFlags(config: FeatureFlagsConfig): Promise<void> {
   return initializeGlobalClient(config);
 }
 
@@ -185,7 +178,7 @@ export async function shutdownFeatureFlags(client: FeatureFlagsClient = 'global'
 
 export const openFeature = OpenFeature;
 
-function requireClient(client: FeatureFlagsClient = 'global') {
+function requireClient(client: FeatureFlagsClient = 'app') {
   const instance = sdkInstances.get(client);
   if (!instance?.isReady) {
     throw new Error('Feature flags SDK is not initialized. Call initializeFeatureFlags() first.');

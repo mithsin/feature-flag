@@ -155,17 +155,6 @@ describe('Feature Flags SDK', () => {
   // ── initializeGlobalClient / initializeFeatureFlags ─────────────────────
 
   describe('initializeGlobalClient', () => {
-    it('throws if SDK key is not provided', async () => {
-      await expect(initializeGlobalClient({})).rejects.toThrow('LaunchDarkly SDK key is required');
-    });
-
-    it('uses LAUNCHDARKLY_SDK_KEY env variable', async () => {
-      process.env['LAUNCHDARKLY_SDK_KEY'] = 'env-sdk-key';
-      await initializeGlobalClient({});
-      expect(mockLdInit).toHaveBeenCalledWith('env-sdk-key', undefined);
-      delete process.env['LAUNCHDARKLY_SDK_KEY'];
-    });
-
     it('throws if already initialized', async () => {
       await initializeGlobalClient({ sdkKey: 'test-key' });
       await expect(initializeGlobalClient({ sdkKey: 'test-key' })).rejects.toThrow(
@@ -358,64 +347,59 @@ describe('Feature Flags SDK', () => {
       await expect(getObjectDetails('flag', {})).rejects.toThrow('not initialized');
     });
 
-    describe('global client (default)', () => {
+    describe('global client', () => {
       const ctx = { targetingKey: 'user-1' };
 
       beforeEach(async () => {
         await initializeGlobalClient({ sdkKey: 'test-key' });
       });
 
-      it('getBooleanValue uses global OpenFeature client', async () => {
+      it('getBooleanValue routes to global OpenFeature client', async () => {
         mockClient.getBooleanValue.mockResolvedValue(true);
-        expect(await getBooleanValue('my-flag', false, ctx)).toBe(true);
+        expect(await getBooleanValue('my-flag', false, ctx, 'global')).toBe(true);
         expect(mockOpenFeature.getClient).toHaveBeenCalledWith(/* no args — default domain */);
         expect(mockClient.getBooleanValue).toHaveBeenCalledWith('my-flag', false, ctx);
       });
 
       it('getStringValue calls client and returns value', async () => {
         mockClient.getStringValue.mockResolvedValue('dark');
-        expect(await getStringValue('theme', 'light', ctx)).toBe('dark');
+        expect(await getStringValue('theme', 'light', ctx, 'global')).toBe('dark');
         expect(mockClient.getStringValue).toHaveBeenCalledWith('theme', 'light', ctx);
       });
 
       it('getNumberValue calls client and returns value', async () => {
         mockClient.getNumberValue.mockResolvedValue(42);
-        expect(await getNumberValue('limit', 0, ctx)).toBe(42);
+        expect(await getNumberValue('limit', 0, ctx, 'global')).toBe(42);
       });
 
       it('getObjectValue calls client and returns value', async () => {
         const config = { timeout: 5000 };
         mockClient.getObjectValue.mockResolvedValue(config);
-        expect(await getObjectValue('config', {}, ctx)).toEqual(config);
+        expect(await getObjectValue('config', {}, ctx, 'global')).toEqual(config);
       });
 
       it('getBooleanDetails returns full details', async () => {
         const details = { value: true, variant: '1', reason: 'TARGETING_MATCH', flagKey: 'my-flag', flagMetadata: {} };
         mockClient.getBooleanDetails.mockResolvedValue(details);
-        expect(await getBooleanDetails('my-flag', false, ctx)).toEqual(details);
+        expect(await getBooleanDetails('my-flag', false, ctx, 'global')).toEqual(details);
       });
 
       it('getStringDetails returns full details', async () => {
         const details = { value: 'v2', variant: '1', reason: 'FALLTHROUGH', flagKey: 'version', flagMetadata: {} };
         mockClient.getStringDetails.mockResolvedValue(details);
-        expect(await getStringDetails('version', 'v1', ctx)).toEqual(details);
+        expect(await getStringDetails('version', 'v1', ctx, 'global')).toEqual(details);
       });
 
       it('getNumberDetails returns full details', async () => {
         const details = { value: 10, variant: '0', reason: 'FALLTHROUGH', flagKey: 'limit', flagMetadata: {} };
         mockClient.getNumberDetails.mockResolvedValue(details);
-        expect(await getNumberDetails('limit', 0, ctx)).toEqual(details);
+        expect(await getNumberDetails('limit', 0, ctx, 'global')).toEqual(details);
       });
 
       it('getObjectDetails returns full details', async () => {
         const details = { value: { x: 1 }, variant: '0', reason: 'FALLTHROUGH', flagKey: 'cfg', flagMetadata: {} };
         mockClient.getObjectDetails.mockResolvedValue(details);
-        expect(await getObjectDetails('cfg', {}, ctx)).toEqual(details);
-      });
-
-      it('works without a context argument', async () => {
-        await getBooleanValue('flag', false);
-        expect(mockClient.getBooleanValue).toHaveBeenCalledWith('flag', false, undefined);
+        expect(await getObjectDetails('cfg', {}, ctx, 'global')).toEqual(details);
       });
     });
 
@@ -440,6 +424,19 @@ describe('Feature Flags SDK', () => {
         expect(result).toBe(true);
       });
 
+      it('omitting client defaults to app', async () => {
+        appMockClient.getBooleanValue.mockResolvedValue(true);
+        const result = await getBooleanValue('flag', false, ctx);
+        expect(mockOpenFeature.getClient).toHaveBeenCalledWith('app');
+        expect(result).toBe(true);
+      });
+
+      it('works without a context argument', async () => {
+        await getBooleanValue('flag', false);
+        expect(mockClient.getBooleanValue ?? appMockClient.getBooleanValue).toBeDefined();
+        expect(appMockClient.getBooleanValue).toHaveBeenCalledWith('flag', false, undefined);
+      });
+
       it('app and global can evaluate the same flag independently', async () => {
         const globalLd = makeLdClient();
         const appLd = makeLdClient();
@@ -450,7 +447,7 @@ describe('Feature Flags SDK', () => {
         mockClient.getBooleanValue.mockResolvedValue(false);
         appMockClient.getBooleanValue.mockResolvedValue(true);
 
-        const globalResult = await getBooleanValue('flag', false, ctx);
+        const globalResult = await getBooleanValue('flag', false, ctx, 'global');
         const appResult = await getBooleanValue('flag', false, ctx, 'app');
 
         expect(globalResult).toBe(false);
