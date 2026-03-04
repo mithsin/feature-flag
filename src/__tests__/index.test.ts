@@ -1,4 +1,4 @@
-import { initialize } from '../index';
+import { initialize, initializeGlobal } from '../index';
 import type { FeatureFlagsInstance } from '../index';
 import { OpenFeature } from '@openfeature/server-sdk';
 import { init as ldInit } from 'launchdarkly-node-server-sdk';
@@ -282,6 +282,45 @@ describe('Feature Flags SDK', () => {
       mockClient.getBooleanValue.mockResolvedValue(false);
       await sdk!.getBooleanValue('flag', false);
       expect(mockClient.getBooleanValue).toHaveBeenCalledWith('flag', false, undefined);
+    });
+  });
+
+  describe('initializeGlobal', () => {
+    it('uses the global OpenFeature domain', async () => {
+      sdk = await initializeGlobal({ sdkKey: 'global-key' });
+      expect(mockOpenFeature.setProviderAndWait).toHaveBeenCalledWith('global', expect.any(Object));
+      expect(mockOpenFeature.getClient).toHaveBeenCalledWith('global');
+    });
+
+    it('returns a ready instance', async () => {
+      sdk = await initializeGlobal({ sdkKey: 'global-key' });
+      expect(sdk.isReady()).toBe(true);
+    });
+
+    it('does not call clearProviders on shutdown', async () => {
+      sdk = await initializeGlobal({ sdkKey: 'global-key' });
+      await sdk.shutdown();
+      expect(mockOpenFeature.clearProviders).not.toHaveBeenCalled();
+      sdk = null;
+    });
+
+    it('closes the LD client on shutdown', async () => {
+      sdk = await initializeGlobal({ sdkKey: 'global-key' });
+      await sdk.shutdown();
+      expect(mockLdClient.close).toHaveBeenCalled();
+      sdk = null;
+    });
+
+    it('can run alongside initialize without conflict', async () => {
+      const globalSdk = await initializeGlobal({ sdkKey: 'global-key' });
+      sdk = await initialize({ sdkKey: 'app-key' });
+
+      expect(mockOpenFeature.setProviderAndWait).toHaveBeenCalledWith('global', expect.any(Object));
+      expect(mockOpenFeature.setProviderAndWait).toHaveBeenCalledWith(expect.any(Object));
+      expect(globalSdk.isReady()).toBe(true);
+      expect(sdk.isReady()).toBe(true);
+
+      await globalSdk.shutdown();
     });
   });
 });

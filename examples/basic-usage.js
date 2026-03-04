@@ -3,23 +3,32 @@
  * Demonstrates how to use the feature flags SDK in a Node.js application
  */
 
-const { initialize } = require('../dist/index');
+const { initialize, initializeGlobal } = require('../dist/index');
+
+let appSdk;
+let globalSdk;
 
 async function main() {
   console.log('=== Feature Flags SDK - Basic Usage Example ===\n');
 
-  // Step 1: Initialize the SDK — returns an instance ready for use
+  // Step 1: Initialize both app-scoped and global instances
   console.log('1. Initializing feature flags SDK...');
-  let sdk;
   try {
-    sdk = await initialize({
-      sdkKey: 'mock-sdkkey',
+    // App-scoped instance — uses the default OpenFeature domain
+    appSdk = await initialize({
+      sdkKey: 'app-sdk-key',
       enableTelemetry: true,
-      options: {
-        timeout: 5000
-      }
+      options: { timeout: 5000 }
     });
-    console.log('   ✓ Initialization complete\n');
+
+    // Global/shared instance — uses the 'global' OpenFeature domain
+    globalSdk = await initializeGlobal({
+      sdkKey: 'global-sdk-key',
+      enableTelemetry: true,
+      options: { timeout: 5000 }
+    });
+
+    console.log('   ✓ Both instances initialized\n');
   } catch (error) {
     console.error('   ✗ Initialization failed:', error.message);
     process.exit(1);
@@ -27,57 +36,51 @@ async function main() {
 
   // Step 2: Check readiness
   console.log('2. Checking readiness...');
-  console.log(`   Ready: ${sdk.isReady()}\n`);
+  console.log(`   App ready:    ${appSdk.isReady()}`);
+  console.log(`   Global ready: ${globalSdk.isReady()}\n`);
 
-  // Step 3: Get detailed status
-  console.log('3. Getting detailed status...');
-  console.log('   Status:', JSON.stringify(sdk.getStatus(), null, 2));
+  // Step 3: Get status from each instance
+  console.log('3. Getting status...');
+  console.log('   App status:   ', JSON.stringify(appSdk.getStatus(), null, 2));
+  console.log('   Global status:', JSON.stringify(globalSdk.getStatus(), null, 2));
   console.log();
 
-  // Step 4: Evaluate feature flags
+  // Step 4: Evaluate flags from each instance independently
   console.log('4. Evaluating feature flags...\n');
 
   const userContext = {
     targetingKey: 'user-12345',
     email: 'john.doe@example.com',
-    name: 'John Doe',
-    customAttributes: {
-      tier: 'premium',
-      region: 'us-east',
-      accountAge: 365
-    }
+    customAttributes: { tier: 'premium', region: 'us-east' }
   };
 
-  // Example 1: Boolean flag
-  console.log('   Example 1: Boolean Flag');
-  const showNewDashboard = await sdk.getBooleanValue(
-    'dav-testing-flag',
-    false,
-    userContext
-  );
-  console.log(`   - dav-testing-flag: ${showNewDashboard}`);
+  // App-specific flag
+  const showNewDashboard = await appSdk.getBooleanValue('new-dashboard', false, userContext);
+  console.log(`   [app]    new-dashboard: ${showNewDashboard}`);
 
-  // Example 2: Detailed evaluation
-  console.log('\n   Example 2: Detailed Evaluation');
-  const details = await sdk.getBooleanDetails(
-    'dav-testing-flag',
-    false,
-    userContext
-  );
-  console.log('   - Detailed evaluation:', JSON.stringify(details, null, 2));
+  // Global/org-wide flag
+  const maintenanceMode = await globalSdk.getBooleanValue('maintenance-mode', false, userContext);
+  console.log(`   [global] maintenance-mode: ${maintenanceMode}`);
 
-  // Step 5: Simulate application logic based on flags
-  console.log('\n5. Using feature flags in application logic...\n');
+  // Detailed evaluation from either instance
+  const details = await appSdk.getBooleanDetails('new-dashboard', false, userContext);
+  console.log('\n   Detailed evaluation:', JSON.stringify(details, null, 2));
 
-  if (showNewDashboard) {
-    console.log('   → Rendering NEW dashboard for user');
+  // Step 5: Application logic using both instances
+  console.log('\n5. Using flags in application logic...\n');
+
+  if (maintenanceMode) {
+    console.log('   → Showing maintenance page (global flag)');
+  } else if (showNewDashboard) {
+    console.log('   → Rendering NEW dashboard (app flag)');
   } else {
-    console.log('   → Rendering LEGACY dashboard for user');
+    console.log('   → Rendering LEGACY dashboard');
   }
 
   // Step 6: Graceful shutdown
   console.log('\n6. Shutting down...');
-  await sdk.shutdown();
+  await appSdk.shutdown();
+  await globalSdk.shutdown();
   console.log('   ✓ Shutdown complete\n');
 
   console.log('=== Example Complete ===');
@@ -90,15 +93,16 @@ main().catch(error => {
 });
 
 // Handle graceful shutdown on SIGTERM/SIGINT
-let sdkInstance;
 process.on('SIGTERM', async () => {
   console.log('\nReceived SIGTERM, shutting down gracefully...');
-  if (sdkInstance) await sdkInstance.shutdown();
+  if (appSdk) await appSdk.shutdown();
+  if (globalSdk) await globalSdk.shutdown();
   process.exit(0);
 });
 
 process.on('SIGINT', async () => {
   console.log('\nReceived SIGINT, shutting down gracefully...');
-  if (sdkInstance) await sdkInstance.shutdown();
+  if (appSdk) await appSdk.shutdown();
+  if (globalSdk) await globalSdk.shutdown();
   process.exit(0);
 });

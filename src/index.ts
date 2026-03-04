@@ -47,7 +47,7 @@ export interface FeatureFlagsInstance {
   getObjectDetails<T extends JsonValue = JsonValue>(flagKey: string, defaultValue: T, context?: EvaluationContext): Promise<EvaluationDetails<T>>;
 }
 
-export async function initialize(config: FeatureFlagsConfig): Promise<FeatureFlagsInstance> {
+async function _initialize(config: FeatureFlagsConfig, domain?: string): Promise<FeatureFlagsInstance> {
   const startTime = Date.now();
 
   let isInitialized = false;
@@ -70,8 +70,12 @@ export async function initialize(config: FeatureFlagsConfig): Promise<FeatureFla
       OpenFeature.addHooks(new TelemetryHook({ ...config.telemetryOptions }));
     }
 
-    await OpenFeature.setProviderAndWait(provider as unknown as Provider);
-    const client = OpenFeature.getClient();
+    if (domain) {
+      await OpenFeature.setProviderAndWait(domain, provider as unknown as Provider);
+    } else {
+      await OpenFeature.setProviderAndWait(provider as unknown as Provider);
+    }
+    const client = domain ? OpenFeature.getClient(domain) : OpenFeature.getClient();
 
     ldClientRef = ldClient;
     providerRef = provider as unknown as Provider;
@@ -98,7 +102,9 @@ export async function initialize(config: FeatureFlagsConfig): Promise<FeatureFla
           return;
         }
         try {
-          await OpenFeature.clearProviders();
+          if (!domain) {
+            await OpenFeature.clearProviders();
+          }
           if (ldClientRef) ldClientRef.close();
           isInitialized = false;
           isReady = false;
@@ -139,6 +145,16 @@ export async function initialize(config: FeatureFlagsConfig): Promise<FeatureFla
     const message = error instanceof Error ? error.message : String(error);
     throw new Error(`Failed to initialize feature flags SDK: ${message}`);
   }
+}
+
+/** Initialize an app-scoped feature flags instance (default OpenFeature domain) */
+export function initialize(config: FeatureFlagsConfig): Promise<FeatureFlagsInstance> {
+  return _initialize(config);
+}
+
+/** Initialize a global/shared feature flags instance (uses 'global' OpenFeature domain) */
+export function initializeGlobal(config: FeatureFlagsConfig): Promise<FeatureFlagsInstance> {
+  return _initialize(config, 'global');
 }
 
 export const openFeature = OpenFeature;
