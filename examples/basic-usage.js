@@ -3,33 +3,22 @@
  * Demonstrates how to use the feature flags SDK in a Node.js application
  */
 
-const {
-  initializeFeatureFlags,
-  isFeatureFlagsReady,
-  getFeatureFlagsStatus,
-  shutdownFeatureFlags,
-  openFeature
-} = require('../dist/index');
+const { initialize } = require('../dist/index');
 
 async function main() {
   console.log('=== Feature Flags SDK - Basic Usage Example ===\n');
 
-  // Step 1: Initialize the SDK
+  // Step 1: Initialize the SDK — returns an instance ready for use
   console.log('1. Initializing feature flags SDK...');
+  let sdk;
   try {
-    await initializeFeatureFlags({
-      // SDK key from environment variable or hardcoded (not recommended for production)
+    sdk = await initialize({
       sdkKey: 'mock-sdkkey',
       enableTelemetry: true,
-      logger: (message) => {
-        console.log('[TELEMETRY]', message);
-      },
       options: {
-        // Additional LaunchDarkly options
         timeout: 5000
       }
     });
-
     console.log('   ✓ Initialization complete\n');
   } catch (error) {
     console.error('   ✗ Initialization failed:', error.message);
@@ -38,22 +27,16 @@ async function main() {
 
   // Step 2: Check readiness
   console.log('2. Checking readiness...');
-  const ready = isFeatureFlagsReady();
-  console.log(`   Ready: ${ready}\n`);
+  console.log(`   Ready: ${sdk.isReady()}\n`);
 
   // Step 3: Get detailed status
   console.log('3. Getting detailed status...');
-  const status = getFeatureFlagsStatus();
-  console.log('   Status:', JSON.stringify(status, null, 2));
+  console.log('   Status:', JSON.stringify(sdk.getStatus(), null, 2));
   console.log();
 
   // Step 4: Evaluate feature flags
   console.log('4. Evaluating feature flags...\n');
 
-  // Get OpenFeature client
-  const client = openFeature.getClient();
-
-  // Define evaluation context (user/session information)
   const userContext = {
     targetingKey: 'user-12345',
     email: 'john.doe@example.com',
@@ -67,17 +50,16 @@ async function main() {
 
   // Example 1: Boolean flag
   console.log('   Example 1: Boolean Flag');
-  const showNewDashboard = await client.getBooleanValue(
+  const showNewDashboard = await sdk.getBooleanValue(
     'dav-testing-flag',
-    false, // default value if flag not found
+    false,
     userContext
   );
-  console.log(`dav,   - dav-testing-flag: ${showNewDashboard}`);
+  console.log(`   - dav-testing-flag: ${showNewDashboard}`);
 
-  
-  // Example 5: Get detailed evaluation information
-  console.log('\n   Example 5: Detailed Evaluation');
-  const details = await client.getBooleanDetails(
+  // Example 2: Detailed evaluation
+  console.log('\n   Example 2: Detailed Evaluation');
+  const details = await sdk.getBooleanDetails(
     'dav-testing-flag',
     false,
     userContext
@@ -89,17 +71,13 @@ async function main() {
 
   if (showNewDashboard) {
     console.log('   → Rendering NEW dashboard for user');
-
-    console.log('dav, showNewDashboard-1: ', showNewDashboard)
   } else {
     console.log('   → Rendering LEGACY dashboard for user');
-    console.log('dav, showNewDashboard-2: ', showNewDashboard)
-
   }
 
   // Step 6: Graceful shutdown
   console.log('\n6. Shutting down...');
-  await shutdownFeatureFlags();
+  await sdk.shutdown();
   console.log('   ✓ Shutdown complete\n');
 
   console.log('=== Example Complete ===');
@@ -112,14 +90,15 @@ main().catch(error => {
 });
 
 // Handle graceful shutdown on SIGTERM/SIGINT
+let sdkInstance;
 process.on('SIGTERM', async () => {
   console.log('\nReceived SIGTERM, shutting down gracefully...');
-  await shutdownFeatureFlags();
+  if (sdkInstance) await sdkInstance.shutdown();
   process.exit(0);
 });
 
 process.on('SIGINT', async () => {
   console.log('\nReceived SIGINT, shutting down gracefully...');
-  await shutdownFeatureFlags();
+  if (sdkInstance) await sdkInstance.shutdown();
   process.exit(0);
 });

@@ -1,17 +1,5 @@
-import {
-  initializeFeatureFlags,
-  isFeatureFlagsReady,
-  getFeatureFlagsStatus,
-  shutdownFeatureFlags,
-  getBooleanValue,
-  getStringValue,
-  getNumberValue,
-  getObjectValue,
-  getBooleanDetails,
-  getStringDetails,
-  getNumberDetails,
-  getObjectDetails,
-} from '../index';
+import { initialize } from '../index';
+import type { FeatureFlagsInstance } from '../index';
 import { OpenFeature } from '@openfeature/server-sdk';
 import { init as ldInit } from 'launchdarkly-node-server-sdk';
 import { TelemetryHook } from '../hooks/telemetry-hook';
@@ -58,8 +46,10 @@ describe('Feature Flags SDK', () => {
     getNumberDetails: jest.Mock;
     getObjectDetails: jest.Mock;
   };
+  let sdk: FeatureFlagsInstance | null;
 
   beforeEach(() => {
+    sdk = null;
     jest.clearAllMocks();
     jest.spyOn(console, 'log').mockImplementation(() => {});
     jest.spyOn(console, 'warn').mockImplementation(() => {});
@@ -84,40 +74,28 @@ describe('Feature Flags SDK', () => {
   });
 
   afterEach(async () => {
-    await shutdownFeatureFlags();
+    if (sdk) await sdk.shutdown();
     jest.restoreAllMocks();
   });
 
-  describe('isFeatureFlagsReady', () => {
-    it('returns false before initialization', () => {
-      expect(isFeatureFlagsReady()).toBe(false);
-    });
-
+  describe('isReady', () => {
     it('returns true after successful initialization', async () => {
-      await initializeFeatureFlags({ sdkKey: 'test-key' });
-      expect(isFeatureFlagsReady()).toBe(true);
+      sdk = await initialize({ sdkKey: 'test-key' });
+      expect(sdk.isReady()).toBe(true);
     });
 
     it('returns false after shutdown', async () => {
-      await initializeFeatureFlags({ sdkKey: 'test-key' });
-      await shutdownFeatureFlags();
-      expect(isFeatureFlagsReady()).toBe(false);
+      sdk = await initialize({ sdkKey: 'test-key' });
+      await sdk.shutdown();
+      expect(sdk.isReady()).toBe(false);
+      sdk = null;
     });
   });
 
-  describe('getFeatureFlagsStatus', () => {
-    it('returns not-ready status before initialization', () => {
-      const status = getFeatureFlagsStatus();
-      expect(status.isInitialized).toBe(false);
-      expect(status.isReady).toBe(false);
-      expect(status.hasError).toBe(false);
-      expect(status.provider).toBeNull();
-      expect(status.initializationTime).toBeNull();
-    });
-
+  describe('getStatus', () => {
     it('returns ready status after successful initialization', async () => {
-      await initializeFeatureFlags({ sdkKey: 'test-key' });
-      const status = getFeatureFlagsStatus();
+      sdk = await initialize({ sdkKey: 'test-key' });
+      const status = sdk.getStatus();
       expect(status.isInitialized).toBe(true);
       expect(status.isReady).toBe(true);
       expect(status.hasError).toBe(false);
@@ -125,32 +103,36 @@ describe('Feature Flags SDK', () => {
       expect(status.initializationTime).toBeGreaterThanOrEqual(0);
     });
 
-    it('includes a valid ISO timestamp', () => {
-      const status = getFeatureFlagsStatus();
+    it('resets status after shutdown', async () => {
+      sdk = await initialize({ sdkKey: 'test-key' });
+      await sdk.shutdown();
+      const status = sdk.getStatus();
+      expect(status.isInitialized).toBe(false);
+      expect(status.isReady).toBe(false);
+      expect(status.provider).toBeNull();
+      sdk = null;
+    });
+
+    it('includes a valid ISO timestamp', async () => {
+      sdk = await initialize({ sdkKey: 'test-key' });
+      const status = sdk.getStatus();
       expect(new Date(status.timestamp).toISOString()).toBe(status.timestamp);
     });
   });
 
-  describe('initializeFeatureFlags', () => {
-    it('throws if called when already initialized', async () => {
-      await initializeFeatureFlags({ sdkKey: 'test-key' });
-      await expect(initializeFeatureFlags({ sdkKey: 'test-key' })).rejects.toThrow(
-        'already initialized',
-      );
-    });
-
+  describe('initialize', () => {
     it('calls ldInit with the provided SDK key and options', async () => {
-      await initializeFeatureFlags({ sdkKey: 'my-key', options: { timeout: 3000 } });
+      sdk = await initialize({ sdkKey: 'my-key', options: { timeout: 3000 } });
       expect(mockLdInit).toHaveBeenCalledWith('my-key', { timeout: 3000 });
     });
 
     it('passes stream: false to ldInit when isStreaming is false', async () => {
-      await initializeFeatureFlags({ sdkKey: 'test-key', isStreaming: false });
+      sdk = await initialize({ sdkKey: 'test-key', isStreaming: false });
       expect(mockLdInit).toHaveBeenCalledWith('test-key', expect.objectContaining({ stream: false }));
     });
 
     it('passes pollInterval to ldInit when pollingFrequencySeconds is provided', async () => {
-      await initializeFeatureFlags({ sdkKey: 'test-key', isStreaming: false, pollingFrequencySeconds: 60 });
+      sdk = await initialize({ sdkKey: 'test-key', isStreaming: false, pollingFrequencySeconds: 60 });
       expect(mockLdInit).toHaveBeenCalledWith(
         'test-key',
         expect.objectContaining({ stream: false, pollInterval: 60 }),
@@ -158,7 +140,7 @@ describe('Feature Flags SDK', () => {
     });
 
     it('merges isStreaming/pollingFrequencySeconds with other options', async () => {
-      await initializeFeatureFlags({ sdkKey: 'test-key', isStreaming: false, pollingFrequencySeconds: 30, options: { timeout: 5000 } });
+      sdk = await initialize({ sdkKey: 'test-key', isStreaming: false, pollingFrequencySeconds: 30, options: { timeout: 5000 } });
       expect(mockLdInit).toHaveBeenCalledWith(
         'test-key',
         expect.objectContaining({ timeout: 5000, stream: false, pollInterval: 30 }),
@@ -166,7 +148,7 @@ describe('Feature Flags SDK', () => {
     });
 
     it('does not pass stream/pollInterval when not set', async () => {
-      await initializeFeatureFlags({ sdkKey: 'test-key' });
+      sdk = await initialize({ sdkKey: 'test-key' });
       const ldOptions = mockLdInit.mock.calls[0][1];
       expect(ldOptions).not.toHaveProperty('stream');
       expect(ldOptions).not.toHaveProperty('pollInterval');
@@ -180,155 +162,126 @@ describe('Feature Flags SDK', () => {
       mockOpenFeature.setProviderAndWait.mockImplementation(async () => {
         callOrder.push('setProviderAndWait');
       });
-
-      await initializeFeatureFlags({ sdkKey: 'test-key' });
+      sdk = await initialize({ sdkKey: 'test-key' });
       expect(callOrder).toEqual(['waitForInitialization', 'setProviderAndWait']);
     });
 
     it('adds telemetry hook by default', async () => {
-      await initializeFeatureFlags({ sdkKey: 'test-key' });
+      sdk = await initialize({ sdkKey: 'test-key' });
       expect(MockTelemetryHook).toHaveBeenCalled();
       expect(mockOpenFeature.addHooks).toHaveBeenCalledWith(expect.any(Object));
     });
 
     it('does not add telemetry hook when enableTelemetry is false', async () => {
-      await initializeFeatureFlags({ sdkKey: 'test-key', enableTelemetry: false });
+      sdk = await initialize({ sdkKey: 'test-key', enableTelemetry: false });
       expect(MockTelemetryHook).not.toHaveBeenCalled();
       expect(mockOpenFeature.addHooks).not.toHaveBeenCalled();
     });
 
     it('wraps and rethrows errors with context', async () => {
       mockLdClient.waitForInitialization.mockRejectedValue(new Error('Connection refused'));
-      await expect(initializeFeatureFlags({ sdkKey: 'test-key' })).rejects.toThrow(
+      await expect(initialize({ sdkKey: 'test-key' })).rejects.toThrow(
         'Failed to initialize feature flags SDK: Connection refused',
       );
     });
-
-    it('sets isReady to false and records error on failed init', async () => {
-      mockLdClient.waitForInitialization.mockRejectedValue(new Error('timeout'));
-      await expect(initializeFeatureFlags({ sdkKey: 'test-key' })).rejects.toThrow();
-
-      const status = getFeatureFlagsStatus();
-      expect(status.isReady).toBe(false);
-      expect(status.hasError).toBe(true);
-      expect(status.error?.message).toBe('timeout');
-    });
   });
 
-  describe('shutdownFeatureFlags', () => {
-    it('warns and returns early when not initialized', async () => {
-      await shutdownFeatureFlags();
-      expect(console.warn).toHaveBeenCalledWith(expect.stringContaining('not initialized'));
-    });
-
+  describe('shutdown', () => {
     it('calls clearProviders on OpenFeature', async () => {
-      await initializeFeatureFlags({ sdkKey: 'test-key' });
-      await shutdownFeatureFlags();
+      sdk = await initialize({ sdkKey: 'test-key' });
+      await sdk.shutdown();
+      sdk = null;
       expect(mockOpenFeature.clearProviders).toHaveBeenCalled();
     });
 
     it('closes the LD client', async () => {
-      await initializeFeatureFlags({ sdkKey: 'test-key' });
-      await shutdownFeatureFlags();
+      sdk = await initialize({ sdkKey: 'test-key' });
+      await sdk.shutdown();
+      sdk = null;
       expect(mockLdClient.close).toHaveBeenCalled();
     });
 
-    it('resets all state after shutdown', async () => {
-      await initializeFeatureFlags({ sdkKey: 'test-key' });
-      await shutdownFeatureFlags();
-
-      const status = getFeatureFlagsStatus();
-      expect(status.isInitialized).toBe(false);
-      expect(status.isReady).toBe(false);
-      expect(status.provider).toBeNull();
+    it('warns when called a second time', async () => {
+      sdk = await initialize({ sdkKey: 'test-key' });
+      await sdk.shutdown();
+      await sdk.shutdown();
+      expect(console.warn).toHaveBeenCalledWith(expect.stringContaining('not initialized'));
+      sdk = null;
     });
   });
 
   describe('flag evaluation helpers', () => {
-    it('throws when SDK is not initialized', async () => {
-      await expect(getBooleanValue('flag', false)).rejects.toThrow('not initialized');
-      await expect(getStringValue('flag', '')).rejects.toThrow('not initialized');
-      await expect(getNumberValue('flag', 0)).rejects.toThrow('not initialized');
-      await expect(getObjectValue('flag', {})).rejects.toThrow('not initialized');
-      await expect(getBooleanDetails('flag', false)).rejects.toThrow('not initialized');
-      await expect(getStringDetails('flag', '')).rejects.toThrow('not initialized');
-      await expect(getNumberDetails('flag', 0)).rejects.toThrow('not initialized');
-      await expect(getObjectDetails('flag', {})).rejects.toThrow('not initialized');
+    const ctx = { targetingKey: 'user-1' };
+
+    beforeEach(async () => {
+      sdk = await initialize({ sdkKey: 'test-key' });
     });
 
-    describe('after initialization', () => {
-      const ctx = { targetingKey: 'user-1' };
+    it('getBooleanValue calls client and returns value', async () => {
+      mockClient.getBooleanValue.mockResolvedValue(true);
+      const result = await sdk!.getBooleanValue('my-flag', false, ctx);
+      expect(mockClient.getBooleanValue).toHaveBeenCalledWith('my-flag', false, ctx);
+      expect(result).toBe(true);
+    });
 
-      beforeEach(async () => {
-        await initializeFeatureFlags({ sdkKey: 'test-key' });
-      });
+    it('getStringValue calls client and returns value', async () => {
+      mockClient.getStringValue.mockResolvedValue('dark');
+      const result = await sdk!.getStringValue('theme', 'light', ctx);
+      expect(mockClient.getStringValue).toHaveBeenCalledWith('theme', 'light', ctx);
+      expect(result).toBe('dark');
+    });
 
-      it('getBooleanValue calls client and returns value', async () => {
-        mockClient.getBooleanValue.mockResolvedValue(true);
-        const result = await getBooleanValue('my-flag', false, ctx);
-        expect(mockClient.getBooleanValue).toHaveBeenCalledWith('my-flag', false, ctx);
-        expect(result).toBe(true);
-      });
+    it('getNumberValue calls client and returns value', async () => {
+      mockClient.getNumberValue.mockResolvedValue(42);
+      const result = await sdk!.getNumberValue('limit', 0, ctx);
+      expect(mockClient.getNumberValue).toHaveBeenCalledWith('limit', 0, ctx);
+      expect(result).toBe(42);
+    });
 
-      it('getStringValue calls client and returns value', async () => {
-        mockClient.getStringValue.mockResolvedValue('dark');
-        const result = await getStringValue('theme', 'light', ctx);
-        expect(mockClient.getStringValue).toHaveBeenCalledWith('theme', 'light', ctx);
-        expect(result).toBe('dark');
-      });
+    it('getObjectValue calls client and returns value', async () => {
+      const config = { timeout: 5000 };
+      mockClient.getObjectValue.mockResolvedValue(config);
+      const result = await sdk!.getObjectValue('config', {}, ctx);
+      expect(mockClient.getObjectValue).toHaveBeenCalledWith('config', {}, ctx);
+      expect(result).toEqual(config);
+    });
 
-      it('getNumberValue calls client and returns value', async () => {
-        mockClient.getNumberValue.mockResolvedValue(42);
-        const result = await getNumberValue('limit', 0, ctx);
-        expect(mockClient.getNumberValue).toHaveBeenCalledWith('limit', 0, ctx);
-        expect(result).toBe(42);
-      });
+    it('getBooleanDetails calls client and returns details', async () => {
+      const details = { value: true, variant: '1', reason: 'TARGETING_MATCH', flagKey: 'my-flag', flagMetadata: {} };
+      mockClient.getBooleanDetails.mockResolvedValue(details);
+      const result = await sdk!.getBooleanDetails('my-flag', false, ctx);
+      expect(mockClient.getBooleanDetails).toHaveBeenCalledWith('my-flag', false, ctx);
+      expect(result).toEqual(details);
+    });
 
-      it('getObjectValue calls client and returns value', async () => {
-        const config = { timeout: 5000 };
-        mockClient.getObjectValue.mockResolvedValue(config);
-        const result = await getObjectValue('config', {}, ctx);
-        expect(mockClient.getObjectValue).toHaveBeenCalledWith('config', {}, ctx);
-        expect(result).toEqual(config);
-      });
+    it('getStringDetails calls client and returns details', async () => {
+      const details = { value: 'v2', variant: '1', reason: 'FALLTHROUGH', flagKey: 'version', flagMetadata: {} };
+      mockClient.getStringDetails.mockResolvedValue(details);
+      const result = await sdk!.getStringDetails('version', 'v1', ctx);
+      expect(mockClient.getStringDetails).toHaveBeenCalledWith('version', 'v1', ctx);
+      expect(result).toEqual(details);
+    });
 
-      it('getBooleanDetails calls client and returns details', async () => {
-        const details = { value: true, variant: '1', reason: 'TARGETING_MATCH', flagKey: 'my-flag', flagMetadata: {} };
-        mockClient.getBooleanDetails.mockResolvedValue(details);
-        const result = await getBooleanDetails('my-flag', false, ctx);
-        expect(mockClient.getBooleanDetails).toHaveBeenCalledWith('my-flag', false, ctx);
-        expect(result).toEqual(details);
-      });
+    it('getNumberDetails calls client and returns details', async () => {
+      const details = { value: 10, variant: '0', reason: 'FALLTHROUGH', flagKey: 'limit', flagMetadata: {} };
+      mockClient.getNumberDetails.mockResolvedValue(details);
+      const result = await sdk!.getNumberDetails('limit', 0, ctx);
+      expect(mockClient.getNumberDetails).toHaveBeenCalledWith('limit', 0, ctx);
+      expect(result).toEqual(details);
+    });
 
-      it('getStringDetails calls client and returns details', async () => {
-        const details = { value: 'v2', variant: '1', reason: 'FALLTHROUGH', flagKey: 'version', flagMetadata: {} };
-        mockClient.getStringDetails.mockResolvedValue(details);
-        const result = await getStringDetails('version', 'v1', ctx);
-        expect(mockClient.getStringDetails).toHaveBeenCalledWith('version', 'v1', ctx);
-        expect(result).toEqual(details);
-      });
+    it('getObjectDetails calls client and returns details', async () => {
+      const details = { value: { x: 1 }, variant: '0', reason: 'FALLTHROUGH', flagKey: 'cfg', flagMetadata: {} };
+      mockClient.getObjectDetails.mockResolvedValue(details);
+      const result = await sdk!.getObjectDetails('cfg', {}, ctx);
+      expect(mockClient.getObjectDetails).toHaveBeenCalledWith('cfg', {}, ctx);
+      expect(result).toEqual(details);
+    });
 
-      it('getNumberDetails calls client and returns details', async () => {
-        const details = { value: 10, variant: '0', reason: 'FALLTHROUGH', flagKey: 'limit', flagMetadata: {} };
-        mockClient.getNumberDetails.mockResolvedValue(details);
-        const result = await getNumberDetails('limit', 0, ctx);
-        expect(mockClient.getNumberDetails).toHaveBeenCalledWith('limit', 0, ctx);
-        expect(result).toEqual(details);
-      });
-
-      it('getObjectDetails calls client and returns details', async () => {
-        const details = { value: { x: 1 }, variant: '0', reason: 'FALLTHROUGH', flagKey: 'cfg', flagMetadata: {} };
-        mockClient.getObjectDetails.mockResolvedValue(details);
-        const result = await getObjectDetails('cfg', {}, ctx);
-        expect(mockClient.getObjectDetails).toHaveBeenCalledWith('cfg', {}, ctx);
-        expect(result).toEqual(details);
-      });
-
-      it('works without a context argument', async () => {
-        mockClient.getBooleanValue.mockResolvedValue(false);
-        await getBooleanValue('flag', false);
-        expect(mockClient.getBooleanValue).toHaveBeenCalledWith('flag', false, undefined);
-      });
+    it('works without a context argument', async () => {
+      mockClient.getBooleanValue.mockResolvedValue(false);
+      await sdk!.getBooleanValue('flag', false);
+      expect(mockClient.getBooleanValue).toHaveBeenCalledWith('flag', false, undefined);
     });
   });
 });
