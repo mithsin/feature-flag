@@ -121,11 +121,11 @@ export async function initializeFeatureFlags(
   return initializeGlobalClient(config);
 }
 
-export function isFeatureFlagsReady(client: FeatureFlagsClient = 'global'): boolean {
+export function isFeatureFlagsReady(client: FeatureFlagsClient = 'app'): boolean {
   return sdkInstances.get(client)?.isReady ?? false;
 }
 
-export function getFeatureFlagsStatus(client: FeatureFlagsClient = 'global'): FeatureFlagsStatus {
+export function getFeatureFlagsStatus(client: FeatureFlagsClient = 'app'): FeatureFlagsStatus {
   const state = sdkInstances.get(client);
   if (!state) {
     return {
@@ -151,7 +151,7 @@ export function getFeatureFlagsStatus(client: FeatureFlagsClient = 'global'): Fe
   };
 }
 
-export async function shutdownFeatureFlags(client: FeatureFlagsClient = 'global'): Promise<void> {
+export async function shutdownFeatureFlags(client: FeatureFlagsClient = 'app'): Promise<void> {
   const state = sdkInstances.get(client);
   if (!state?.isInitialized) {
     console.warn(`Feature flags '${client}' client is not initialized, nothing to shut down`);

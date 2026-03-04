@@ -105,14 +105,13 @@ describe('Feature Flags SDK', () => {
 
     it('returns true after initializeGlobalClient', async () => {
       await initializeGlobalClient({ sdkKey: 'test-key' });
-      expect(isFeatureFlagsReady()).toBe(true);
       expect(isFeatureFlagsReady('global')).toBe(true);
     });
 
     it('returns false after shutdown', async () => {
       await initializeGlobalClient({ sdkKey: 'test-key' });
-      await shutdownFeatureFlags();
-      expect(isFeatureFlagsReady()).toBe(false);
+      await shutdownFeatureFlags('global');
+      expect(isFeatureFlagsReady('global')).toBe(false);
     });
 
     it('app client ready state is independent of global', async () => {
@@ -138,7 +137,7 @@ describe('Feature Flags SDK', () => {
 
     it('returns ready status after initializeGlobalClient', async () => {
       await initializeGlobalClient({ sdkKey: 'test-key' });
-      const status = getFeatureFlagsStatus();
+      const status = getFeatureFlagsStatus('global');
       expect(status.isInitialized).toBe(true);
       expect(status.isReady).toBe(true);
       expect(status.hasError).toBe(false);
@@ -261,7 +260,7 @@ describe('Feature Flags SDK', () => {
 
   describe('shutdownFeatureFlags', () => {
     it('warns when global client is not initialized', async () => {
-      await shutdownFeatureFlags();
+      await shutdownFeatureFlags('global');
       expect(console.warn).toHaveBeenCalledWith(
         expect.stringContaining("'global' client is not initialized"),
       );
@@ -288,7 +287,7 @@ describe('Feature Flags SDK', () => {
 
     it('closes the LD client on shutdown', async () => {
       await initializeGlobalClient({ sdkKey: 'test-key' });
-      await shutdownFeatureFlags();
+      await shutdownFeatureFlags('global');
       expect(mockLdClient.close).toHaveBeenCalled();
     });
 
@@ -309,8 +308,8 @@ describe('Feature Flags SDK', () => {
 
     it('resets state after shutdown', async () => {
       await initializeGlobalClient({ sdkKey: 'test-key' });
-      await shutdownFeatureFlags();
-      const status = getFeatureFlagsStatus();
+      await shutdownFeatureFlags('global');
+      const status = getFeatureFlagsStatus('global');
       expect(status.isInitialized).toBe(false);
       expect(status.isReady).toBe(false);
       expect(status.provider).toBeNull();
