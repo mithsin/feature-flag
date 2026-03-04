@@ -8,6 +8,8 @@ import { TelemetryHook } from './hooks/telemetry-hook';
 export type FeatureFlagsClient = 'global' | 'app';
 
 export interface FeatureFlagsConfig {
+  /** Which client instance to initialize (default: 'app') */
+  client?: FeatureFlagsClient;
   /** LaunchDarkly SDK key */
   sdkKey: string;
   /** Additional LaunchDarkly provider options */
@@ -45,10 +47,8 @@ interface SdkState {
 
 const sdkInstances = new Map<FeatureFlagsClient, SdkState>();
 
-async function _initializeClient(
-  config: FeatureFlagsConfig,
-  client: FeatureFlagsClient,
-): Promise<void> {
+async function _initializeClient(config: FeatureFlagsConfig): Promise<void> {
+  const { client = 'app' } = config;
   if (sdkInstances.get(client)?.isInitialized) {
     throw new Error(`Feature flags '${client}' client is already initialized`);
   }
@@ -108,16 +108,22 @@ async function _initializeClient(
   }
 }
 
-export async function initializeGlobalClient(config: FeatureFlagsConfig): Promise<void> {
-  return _initializeClient(config, 'global');
+export async function initializeGlobalClient(
+  config: Omit<FeatureFlagsConfig, 'client'>,
+): Promise<void> {
+  return _initializeClient({ ...config, client: 'global' });
 }
 
-export async function initializeAppClient(config: FeatureFlagsConfig): Promise<void> {
-  return _initializeClient(config, 'app');
+export async function initializeAppClient(
+  config: Omit<FeatureFlagsConfig, 'client'>,
+): Promise<void> {
+  return _initializeClient({ ...config, client: 'app' });
 }
 
 /** @deprecated Use initializeGlobalClient instead */
-export async function initializeFeatureFlags(config: FeatureFlagsConfig): Promise<void> {
+export async function initializeFeatureFlags(
+  config: Omit<FeatureFlagsConfig, 'client'>,
+): Promise<void> {
   return initializeGlobalClient(config);
 }
 
