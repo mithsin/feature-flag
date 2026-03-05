@@ -42,6 +42,7 @@ export interface FeatureFlagClient {
   getStringDetails(flagKey: string, defaultValue: string, context?: EvaluationContext): Promise<EvaluationDetails<string>>;
   getNumberDetails(flagKey: string, defaultValue: number, context?: EvaluationContext): Promise<EvaluationDetails<number>>;
   getObjectDetails<T extends JsonValue = JsonValue>(flagKey: string, defaultValue: T, context?: EvaluationContext): Promise<EvaluationDetails<T>>;
+  isReady(): boolean;
   getStatus(): FeatureFlagsStatus;
   shutdown(): Promise<void>;
 }
@@ -68,8 +69,6 @@ let sdkState: SdkState = {
   isStreaming: false,
 };
 
-let instanceCounter = 0;
-
 function buildLdOptions(config: FeatureFlagsConfig): Record<string, unknown> {
   return {
     ...config.options,
@@ -94,6 +93,7 @@ function wrapClient(
     getNumberDetails: (flagKey, defaultValue, context) => ofClient.getNumberDetails(flagKey, defaultValue, context),
     getObjectDetails: <T extends JsonValue = JsonValue>(flagKey: string, defaultValue: T, context?: EvaluationContext) =>
       ofClient.getObjectDetails(flagKey, defaultValue, context) as Promise<EvaluationDetails<T>>,
+    isReady: () => getStatus().isReady,
     getStatus,
     shutdown: onShutdown,
   };
@@ -113,7 +113,7 @@ async function initLdAndProvider(config: FeatureFlagsConfig): Promise<{ ldClient
 }
 
 export async function initialize(config: FeatureFlagsConfig): Promise<FeatureFlagClient> {
-  const domain = `feature-flags-${++instanceCounter}`;
+  const domain = 'app';
   const startTime = Date.now();
   const state: SdkState = {
     isInitialized: false,

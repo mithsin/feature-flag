@@ -343,12 +343,9 @@ describe('Feature Flags SDK', () => {
       expect(typeof client.shutdown).toBe('function');
     });
 
-    it('uses a domain-scoped provider (setProviderAndWait called with domain)', async () => {
+    it('uses a domain-scoped provider (setProviderAndWait called with domain "app")', async () => {
       await initialize({ sdkKey: 'test-key' });
-      expect(mockOpenFeature.setProviderAndWait).toHaveBeenCalledWith(
-        expect.stringMatching(/^feature-flags-\d+$/),
-        expect.any(Object),
-      );
+      expect(mockOpenFeature.setProviderAndWait).toHaveBeenCalledWith('app', expect.any(Object));
     });
 
     it('adds telemetry hook by default', async () => {
@@ -360,6 +357,11 @@ describe('Feature Flags SDK', () => {
     it('does not add telemetry hook when enableTelemetry is false', async () => {
       await initialize({ sdkKey: 'test-key', enableTelemetry: false });
       expect(MockTelemetryHook).not.toHaveBeenCalled();
+    });
+
+    it('isReady returns true after initialization', async () => {
+      const client = await initialize({ sdkKey: 'test-key' });
+      expect(client.isReady()).toBe(true);
     });
 
     it('getStatus returns ready status after initialization', async () => {
@@ -385,19 +387,9 @@ describe('Feature Flags SDK', () => {
       );
     });
 
-    it('multiple instances can coexist independently', async () => {
-      const mockClient2 = { ...mockClient, getBooleanValue: jest.fn().mockResolvedValue(true) };
-      mockOpenFeature.getClient
-        .mockReturnValueOnce(mockClient)
-        .mockReturnValueOnce(mockClient2);
-
-      const client1 = await initialize({ sdkKey: 'key-1' });
-      const client2 = await initialize({ sdkKey: 'key-2' });
-
-      expect(mockOpenFeature.setProviderAndWait).toHaveBeenCalledTimes(2);
-      await client1.shutdown();
-      await client2.shutdown();
-      expect(mockLdClient.close).toHaveBeenCalledTimes(2);
+    it('gets the client by the "app" domain', async () => {
+      await initialize({ sdkKey: 'test-key' });
+      expect(mockOpenFeature.getClient).toHaveBeenCalledWith('app');
     });
   });
 
@@ -423,6 +415,12 @@ describe('Feature Flags SDK', () => {
     it('throws if called when already initialized', async () => {
       const client = await initializeGlobal({ sdkKey: 'test-key' });
       await expect(initializeGlobal({ sdkKey: 'test-key' })).rejects.toThrow('already initialized');
+      await client.shutdown();
+    });
+
+    it('isReady returns true after initialization', async () => {
+      const client = await initializeGlobal({ sdkKey: 'test-key' });
+      expect(client.isReady()).toBe(true);
       await client.shutdown();
     });
 
@@ -475,15 +473,12 @@ describe('Feature Flags SDK', () => {
       await featureFlags2.shutdown();
     });
 
-    it('setProviderAndWait is called separately for each (domain for instance, global for singleton)', async () => {
+    it('setProviderAndWait uses "app" domain for initialize and global for initializeGlobal', async () => {
       const featureFlags1 = await initialize({ sdkKey: 'key-1' });
       const featureFlags2 = await initializeGlobal({ sdkKey: 'key-2' });
 
-      const calls = mockOpenFeature.setProviderAndWait.mock.calls;
-      const domainCall = calls.find((args: unknown[]) => args.length === 2);
-      const globalCall = calls.find((args: unknown[]) => args.length === 1);
-      expect(domainCall).toBeDefined();
-      expect(globalCall).toBeDefined();
+      expect(mockOpenFeature.setProviderAndWait).toHaveBeenCalledWith('app', expect.any(Object));
+      expect(mockOpenFeature.setProviderAndWait).toHaveBeenCalledWith(expect.any(Object));
 
       await featureFlags1.shutdown();
       await featureFlags2.shutdown();

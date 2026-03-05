@@ -37,6 +37,8 @@ async function main() {
 
     console.log('=== featureFlags1 (initialize - isolated instance) ===\n');
 
+    console.log(`isReady: ${featureFlags1.isReady()}`);
+
     const value1 = await featureFlags1.getBooleanValue('dav-testing-flag', false, userContext);
     console.log(`dav-testing-flag: ${value1}`);
 
@@ -46,6 +48,8 @@ async function main() {
     console.log('Status:', JSON.stringify(featureFlags1.getStatus(), null, 2));
 
     console.log('\n=== featureFlags2 (initializeGlobal - global singleton) ===\n');
+
+    console.log(`isReady: ${featureFlags2.isReady()}`);
 
     const value2 = await featureFlags2.getBooleanValue('dav-testing-flag', false, userContext);
     console.log(`dav-testing-flag: ${value2}`);
