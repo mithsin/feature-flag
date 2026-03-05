@@ -1,4 +1,6 @@
 import {
+  initialize,
+  initializeGlobal,
   initializeFeatureFlags,
   isFeatureFlagsReady,
   getFeatureFlagsStatus,
@@ -329,6 +331,162 @@ describe('Feature Flags SDK', () => {
         await getBooleanValue('flag', false);
         expect(mockClient.getBooleanValue).toHaveBeenCalledWith('flag', false, undefined);
       });
+    });
+  });
+
+  describe('initialize', () => {
+    it('returns a FeatureFlagClient', async () => {
+      const client = await initialize({ sdkKey: 'test-key' });
+      expect(client).toBeDefined();
+      expect(typeof client.getBooleanValue).toBe('function');
+      expect(typeof client.getStatus).toBe('function');
+      expect(typeof client.shutdown).toBe('function');
+    });
+
+    it('uses a domain-scoped provider (setProviderAndWait called with domain)', async () => {
+      await initialize({ sdkKey: 'test-key' });
+      expect(mockOpenFeature.setProviderAndWait).toHaveBeenCalledWith(
+        expect.stringMatching(/^feature-flags-\d+$/),
+        expect.any(Object),
+      );
+    });
+
+    it('adds telemetry hook by default', async () => {
+      await initialize({ sdkKey: 'test-key' });
+      expect(MockTelemetryHook).toHaveBeenCalled();
+      expect(mockOpenFeature.addHooks).toHaveBeenCalled();
+    });
+
+    it('does not add telemetry hook when enableTelemetry is false', async () => {
+      await initialize({ sdkKey: 'test-key', enableTelemetry: false });
+      expect(MockTelemetryHook).not.toHaveBeenCalled();
+    });
+
+    it('getStatus returns ready status after initialization', async () => {
+      const client = await initialize({ sdkKey: 'test-key' });
+      const status = client.getStatus();
+      expect(status.isInitialized).toBe(true);
+      expect(status.isReady).toBe(true);
+      expect(status.hasError).toBe(false);
+      expect(status.provider).toEqual({ name: 'LaunchDarkly', status: 'READY' });
+      expect(status.initializationTime).toBeGreaterThanOrEqual(0);
+    });
+
+    it('shutdown closes the LD client', async () => {
+      const client = await initialize({ sdkKey: 'test-key' });
+      await client.shutdown();
+      expect(mockLdClient.close).toHaveBeenCalled();
+    });
+
+    it('wraps and rethrows errors with context', async () => {
+      mockLdClient.waitForInitialization.mockRejectedValue(new Error('network error'));
+      await expect(initialize({ sdkKey: 'test-key' })).rejects.toThrow(
+        'Failed to initialize feature flags SDK: network error',
+      );
+    });
+
+    it('multiple instances can coexist independently', async () => {
+      const mockClient2 = { ...mockClient, getBooleanValue: jest.fn().mockResolvedValue(true) };
+      mockOpenFeature.getClient
+        .mockReturnValueOnce(mockClient)
+        .mockReturnValueOnce(mockClient2);
+
+      const client1 = await initialize({ sdkKey: 'key-1' });
+      const client2 = await initialize({ sdkKey: 'key-2' });
+
+      expect(mockOpenFeature.setProviderAndWait).toHaveBeenCalledTimes(2);
+      await client1.shutdown();
+      await client2.shutdown();
+      expect(mockLdClient.close).toHaveBeenCalledTimes(2);
+    });
+  });
+
+  describe('initializeGlobal', () => {
+    it('returns a FeatureFlagClient', async () => {
+      const client = await initializeGlobal({ sdkKey: 'test-key' });
+      expect(client).toBeDefined();
+      expect(typeof client.getBooleanValue).toBe('function');
+      expect(typeof client.getStatus).toBe('function');
+      expect(typeof client.shutdown).toBe('function');
+      await client.shutdown();
+    });
+
+    it('uses the global provider (setProviderAndWait called with one argument)', async () => {
+      const client = await initializeGlobal({ sdkKey: 'test-key' });
+      // Global call: setProviderAndWait(provider) — only one argument
+      const calls = mockOpenFeature.setProviderAndWait.mock.calls;
+      const globalCall = calls.find((args: unknown[]) => args.length === 1);
+      expect(globalCall).toBeDefined();
+      await client.shutdown();
+    });
+
+    it('throws if called when already initialized', async () => {
+      const client = await initializeGlobal({ sdkKey: 'test-key' });
+      await expect(initializeGlobal({ sdkKey: 'test-key' })).rejects.toThrow('already initialized');
+      await client.shutdown();
+    });
+
+    it('getStatus returns ready status after initialization', async () => {
+      const client = await initializeGlobal({ sdkKey: 'test-key' });
+      const status = client.getStatus();
+      expect(status.isInitialized).toBe(true);
+      expect(status.isReady).toBe(true);
+      expect(status.hasError).toBe(false);
+      expect(status.provider).toEqual({ name: 'LaunchDarkly', status: 'READY' });
+      await client.shutdown();
+    });
+
+    it('shutdown closes the LD client', async () => {
+      const client = await initializeGlobal({ sdkKey: 'test-key' });
+      await client.shutdown();
+      expect(mockLdClient.close).toHaveBeenCalled();
+    });
+
+    it('wraps and rethrows errors with context', async () => {
+      mockLdClient.waitForInitialization.mockRejectedValue(new Error('timeout'));
+      await expect(initializeGlobal({ sdkKey: 'test-key' })).rejects.toThrow(
+        'Failed to initialize feature flags SDK: timeout',
+      );
+    });
+  });
+
+  describe('initialize and initializeGlobal coexistence', () => {
+    it('featureFlags1 (initialize) and featureFlags2 (initializeGlobal) can be active simultaneously', async () => {
+      const mockClient2 = { ...mockClient, getBooleanValue: jest.fn().mockResolvedValue(true) };
+      mockOpenFeature.getClient
+        .mockReturnValueOnce(mockClient)   // domain-scoped for featureFlags1
+        .mockReturnValueOnce(mockClient2); // global for featureFlags2
+
+      const featureFlags1 = await initialize({ sdkKey: 'key-1' });
+      const featureFlags2 = await initializeGlobal({ sdkKey: 'key-2' });
+
+      // Both are ready at the same time
+      expect(featureFlags1.getStatus().isReady).toBe(true);
+      expect(featureFlags2.getStatus().isReady).toBe(true);
+
+      // Each client delegates to its own OpenFeature client
+      mockClient.getBooleanValue.mockResolvedValue(false);
+      const val1 = await featureFlags1.getBooleanValue('flag', false);
+      const val2 = await featureFlags2.getBooleanValue('flag', false);
+      expect(val1).toBe(false);
+      expect(val2).toBe(true);
+
+      await featureFlags1.shutdown();
+      await featureFlags2.shutdown();
+    });
+
+    it('setProviderAndWait is called separately for each (domain for instance, global for singleton)', async () => {
+      const featureFlags1 = await initialize({ sdkKey: 'key-1' });
+      const featureFlags2 = await initializeGlobal({ sdkKey: 'key-2' });
+
+      const calls = mockOpenFeature.setProviderAndWait.mock.calls;
+      const domainCall = calls.find((args: unknown[]) => args.length === 2);
+      const globalCall = calls.find((args: unknown[]) => args.length === 1);
+      expect(domainCall).toBeDefined();
+      expect(globalCall).toBeDefined();
+
+      await featureFlags1.shutdown();
+      await featureFlags2.shutdown();
     });
   });
 });

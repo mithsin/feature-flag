@@ -1,125 +1,75 @@
 /**
  * Basic Usage Example
- * Demonstrates how to use the feature flags SDK in a Node.js application
+ * Demonstrates how initialize() and initializeGlobal() can coexist simultaneously
  */
 
-const {
-  initializeFeatureFlags,
-  isFeatureFlagsReady,
-  getFeatureFlagsStatus,
-  shutdownFeatureFlags,
-  openFeature
-} = require('../dist/index');
+const { initialize, initializeGlobal } = require('../dist/index');
+
+const userContext = {
+  targetingKey: 'user-12345',
+  email: 'john.doe@example.com',
+  name: 'John Doe',
+  customAttributes: {
+    tier: 'premium',
+    region: 'us-east',
+    accountAge: 365
+  }
+};
 
 async function main() {
   console.log('=== Feature Flags SDK - Basic Usage Example ===\n');
 
-  // Step 1: Initialize the SDK
-  console.log('1. Initializing feature flags SDK...');
   try {
-    await initializeFeatureFlags({
-      // SDK key from environment variable or hardcoded (not recommended for production)
+    // Both can be initialized at the same time:
+    // featureFlags1 uses an isolated domain-scoped instance
+    // featureFlags2 uses the global singleton
+    const featureFlags1 = await initialize({
       sdkKey: 'mock-sdkkey',
       enableTelemetry: true,
-      logger: (message) => {
-        console.log('[TELEMETRY]', message);
-      },
-      options: {
-        // Additional LaunchDarkly options
-        timeout: 5000
-      }
+      options: { timeout: 5000 }
     });
 
-    console.log('   ✓ Initialization complete\n');
+    const featureFlags2 = await initializeGlobal({
+      sdkKey: 'mock-sdkkey',
+      enableTelemetry: true,
+      options: { timeout: 5000 }
+    });
+
+    console.log('=== featureFlags1 (initialize - isolated instance) ===\n');
+
+    const value1 = await featureFlags1.getBooleanValue('dav-testing-flag', false, userContext);
+    console.log(`dav-testing-flag: ${value1}`);
+
+    const details1 = await featureFlags1.getBooleanDetails('dav-testing-flag', false, userContext);
+    console.log('Detailed evaluation:', JSON.stringify(details1, null, 2));
+
+    console.log('Status:', JSON.stringify(featureFlags1.getStatus(), null, 2));
+
+    console.log('\n=== featureFlags2 (initializeGlobal - global singleton) ===\n');
+
+    const value2 = await featureFlags2.getBooleanValue('dav-testing-flag', false, userContext);
+    console.log(`dav-testing-flag: ${value2}`);
+
+    const details2 = await featureFlags2.getBooleanDetails('dav-testing-flag', false, userContext);
+    console.log('Detailed evaluation:', JSON.stringify(details2, null, 2));
+
+    console.log('Status:', JSON.stringify(featureFlags2.getStatus(), null, 2));
+
+    // Shut down both
+    await featureFlags1.shutdown();
+    console.log('\nfeatureFlags1 (instance) shut down');
+
+    await featureFlags2.shutdown();
+    console.log('featureFlags2 (global) shut down');
   } catch (error) {
-    console.error('   ✗ Initialization failed:', error.message);
+    console.error('Example failed:', error.message);
     process.exit(1);
   }
 
-  // Step 2: Check readiness
-  console.log('2. Checking readiness...');
-  const ready = isFeatureFlagsReady();
-  console.log(`   Ready: ${ready}\n`);
-
-  // Step 3: Get detailed status
-  console.log('3. Getting detailed status...');
-  const status = getFeatureFlagsStatus();
-  console.log('   Status:', JSON.stringify(status, null, 2));
-  console.log();
-
-  // Step 4: Evaluate feature flags
-  console.log('4. Evaluating feature flags...\n');
-
-  // Get OpenFeature client
-  const client = openFeature.getClient();
-
-  // Define evaluation context (user/session information)
-  const userContext = {
-    targetingKey: 'user-12345',
-    email: 'john.doe@example.com',
-    name: 'John Doe',
-    customAttributes: {
-      tier: 'premium',
-      region: 'us-east',
-      accountAge: 365
-    }
-  };
-
-  // Example 1: Boolean flag
-  console.log('   Example 1: Boolean Flag');
-  const showNewDashboard = await client.getBooleanValue(
-    'dav-testing-flag',
-    false, // default value if flag not found
-    userContext
-  );
-  console.log(`dav,   - dav-testing-flag: ${showNewDashboard}`);
-
-  
-  // Example 5: Get detailed evaluation information
-  console.log('\n   Example 5: Detailed Evaluation');
-  const details = await client.getBooleanDetails(
-    'dav-testing-flag',
-    false,
-    userContext
-  );
-  console.log('   - Detailed evaluation:', JSON.stringify(details, null, 2));
-
-  // Step 5: Simulate application logic based on flags
-  console.log('\n5. Using feature flags in application logic...\n');
-
-  if (showNewDashboard) {
-    console.log('   → Rendering NEW dashboard for user');
-
-    console.log('dav, showNewDashboard-1: ', showNewDashboard)
-  } else {
-    console.log('   → Rendering LEGACY dashboard for user');
-    console.log('dav, showNewDashboard-2: ', showNewDashboard)
-
-  }
-
-  // Step 6: Graceful shutdown
-  console.log('\n6. Shutting down...');
-  await shutdownFeatureFlags();
-  console.log('   ✓ Shutdown complete\n');
-
-  console.log('=== Example Complete ===');
+  console.log('\n=== Example Complete ===');
 }
 
-// Run the example
 main().catch(error => {
   console.error('Example failed:', error);
   process.exit(1);
-});
-
-// Handle graceful shutdown on SIGTERM/SIGINT
-process.on('SIGTERM', async () => {
-  console.log('\nReceived SIGTERM, shutting down gracefully...');
-  await shutdownFeatureFlags();
-  process.exit(0);
-});
-
-process.on('SIGINT', async () => {
-  console.log('\nReceived SIGINT, shutting down gracefully...');
-  await shutdownFeatureFlags();
-  process.exit(0);
 });
