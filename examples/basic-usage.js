@@ -24,15 +24,11 @@ async function main() {
     // featureFlags1 uses an isolated domain-scoped instance
     // featureFlags2 uses the global singleton
     const featureFlags1 = await initialize({
-      sdkKey: 'mock-sdkkey',
-      enableTelemetry: true,
-      options: { timeout: 5000 }
+      sdkKey: 'sdk-6ea49384-e02d-48ad-95be-2c4bbee64650'
     });
 
     const featureFlags2 = await initializeGlobal({
-      sdkKey: 'mock-sdkkey',
-      enableTelemetry: true,
-      options: { timeout: 5000 }
+      sdkKey: 'sdk-eaed4be6-524c-4689-8d24-7bb4eb8e0bc1'
     });
 
     console.log('=== featureFlags1 (initialize - isolated instance) ===\n');
