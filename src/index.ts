@@ -69,7 +69,7 @@ function buildLdOptions(config: FeatureFlagsConfig): Record<string, unknown> {
   return {
     ...config.options,
     ...(config.isStreaming !== undefined && { stream: config.isStreaming }),
-    ...(config.pollingFrequencySeconds !== undefined && { pollInterval: config.pollingFrequencySeconds }),
+    pollInterval: config.pollingFrequencySeconds ?? 30,
   };
 }
 

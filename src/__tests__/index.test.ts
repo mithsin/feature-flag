@@ -128,12 +128,17 @@ describe('Feature Flags SDK', () => {
 
     it('calls ldInit with the provided SDK key and options', async () => {
       await initialize({ sdkKey: 'my-key', options: { timeout: 3000 } });
-      expect(mockLdInit).toHaveBeenCalledWith('my-key', { timeout: 3000 });
+      expect(mockLdInit).toHaveBeenCalledWith('my-key', { timeout: 3000, pollInterval: 30 });
     });
 
     it('passes stream: false to ldInit when isStreaming is false', async () => {
       await initialize({ sdkKey: 'test-key', isStreaming: false });
       expect(mockLdInit).toHaveBeenCalledWith('test-key', expect.objectContaining({ stream: false }));
+    });
+
+    it('defaults pollInterval to 30 when pollingFrequencySeconds is not set', async () => {
+      await initialize({ sdkKey: 'test-key' });
+      expect(mockLdInit).toHaveBeenCalledWith('test-key', expect.objectContaining({ pollInterval: 30 }));
     });
 
     it('passes pollInterval to ldInit when pollingFrequencySeconds is provided', async () => {
